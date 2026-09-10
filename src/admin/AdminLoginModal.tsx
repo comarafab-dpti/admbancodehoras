@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   AlertCircle, 
-  X, 
   Lock,
   ShieldCheck,
   Copy,
@@ -149,23 +148,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
-      <div className={`w-full max-w-lg p-6 sm:p-8 rounded-3xl border shadow-2xl space-y-5 relative animate-in zoom-in-95 max-h-[90vh] overflow-y-auto ${
+    <div className={`min-h-screen w-full flex items-center justify-center p-4 sm:p-6 transition-colors ${
+      isDark ? 'bg-[#0F1B33]' : 'bg-slate-50'
+    }`}>
+      <div className={`w-full max-w-lg p-6 sm:p-8 rounded-3xl border shadow-2xl space-y-5 relative ${
         isDark ? 'bg-[#16243D] border-[#335075] text-white' : 'bg-white border-slate-200 text-slate-900'
       }`}>
-        
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className={`absolute top-5 right-5 p-1.5 rounded-xl border transition-colors active:scale-[0.98] cursor-pointer ${
-            isDark ? 'bg-[#243756] border-[#335075] text-gray-400 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <X className="w-4 h-4" />
-        </button>
 
-        {/* Modal Header with Official COMARA Shield */}
+        {/* Page Header with Official COMARA Shield */}
         <div className="text-center space-y-2 pt-1">
           <div className="flex justify-center mb-1">
             <ComaraLogo size="lg" />

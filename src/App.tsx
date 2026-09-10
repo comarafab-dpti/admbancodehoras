@@ -1858,15 +1858,13 @@ export default function App() {
   // O entry administrativo é o único entry point da aplicação.
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <AdminLoginModal
-          isOpen
-          onClose={() => undefined}
-          onGoogleSignIn={handleGoogleSignIn}
-          onDevAdminSignIn={handleDevAdminSignIn}
-          isDark={isDark}
-        />
-      </div>
+      <AdminLoginModal
+        isOpen
+        onClose={() => undefined}
+        onGoogleSignIn={handleGoogleSignIn}
+        onDevAdminSignIn={handleDevAdminSignIn}
+        isDark={isDark}
+      />
     );
   }
 
