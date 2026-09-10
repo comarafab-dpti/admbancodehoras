@@ -12,17 +12,11 @@ function routeHtmlPlugin(): Plugin {
         const fullUrl = req.url || '';
         const [url, query] = fullUrl.split('?');
         const queryStr = query ? `?${query}` : '';
-        const host = (req.headers.host || '').toLowerCase();
-        const isAdmHost = host.startsWith('admbancodehoras.');
 
         if (url === '/admin' || url === '/admin/') {
           req.url = `/admin.html${queryStr}`;
-        } else if (url === '/portal' || url === '/portal/') {
-          req.url = `/portal.html${queryStr}`;
         } else if (url === '/' || url === '/index.html') {
-          res.writeHead(302, {
-            Location: isAdmHost ? `/admin${queryStr}` : `/portal${queryStr}`,
-          });
+          res.writeHead(302, { Location: `/admin${queryStr}` });
           res.end();
           return;
         }
@@ -34,17 +28,11 @@ function routeHtmlPlugin(): Plugin {
         const fullUrl = req.url || '';
         const [url, query] = fullUrl.split('?');
         const queryStr = query ? `?${query}` : '';
-        const host = (req.headers.host || '').toLowerCase();
-        const isAdmHost = host.startsWith('admbancodehoras.');
 
         if (url === '/admin' || url === '/admin/') {
           req.url = `/admin.html${queryStr}`;
-        } else if (url === '/portal' || url === '/portal/') {
-          req.url = `/portal.html${queryStr}`;
         } else if (url === '/' || url === '/index.html') {
-          res.writeHead(302, {
-            Location: isAdmHost ? `/admin${queryStr}` : `/portal${queryStr}`,
-          });
+          res.writeHead(302, { Location: `/admin${queryStr}` });
           res.end();
           return;
         }
@@ -54,16 +42,10 @@ function routeHtmlPlugin(): Plugin {
     closeBundle() {
       const distDir = path.resolve(__dirname, 'dist');
       const adminHtml = path.resolve(distDir, 'admin.html');
-      const portalHtml = path.resolve(distDir, 'portal.html');
       if (fs.existsSync(adminHtml)) {
         const adminDir = path.resolve(distDir, 'admin');
         if (!fs.existsSync(adminDir)) fs.mkdirSync(adminDir, { recursive: true });
         fs.copyFileSync(adminHtml, path.resolve(adminDir, 'index.html'));
-      }
-      if (fs.existsSync(portalHtml)) {
-        const portalDir = path.resolve(distDir, 'portal');
-        if (!fs.existsSync(portalDir)) fs.mkdirSync(portalDir, { recursive: true });
-        fs.copyFileSync(portalHtml, path.resolve(portalDir, 'index.html'));
       }
     },
   };
@@ -92,7 +74,6 @@ export default defineConfig(() => {
         input: {
           index: path.resolve(__dirname, 'index.html'),
           admin: path.resolve(__dirname, 'admin.html'),
-          portal: path.resolve(__dirname, 'portal.html'),
         },
       },
     },

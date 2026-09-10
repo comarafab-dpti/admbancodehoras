@@ -333,15 +333,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           <span>Acesso corporativo restrito às contas cadastradas na matriz de permissões RBAC da Organização Militar.</span>
         </div>
 
-        {/* Footer info & link to portal */}
+        {/* Footer info */}
         <div className="pt-2 border-t border-slate-700/40 text-center space-y-1.5">
-          <a
-            href="/portal"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors"
-          >
-            <span>Não é administrador? Acessar o Portal do Colaborador</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
           <p className={`text-[10px] ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>
             COMARA • Comissão de Aeroportos da Região Amazônica / FAB
           </p>

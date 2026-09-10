@@ -127,13 +127,8 @@ export interface CanteiroSignatures {
 }
 
 export type AccessLogType = 
-  | 'LOGIN_COLABORADOR' 
-  | 'CONSULTA_SALDO' 
-  | 'PRIMEIRO_ACESSO' 
-  | 'DEFINICAO_SENHA' 
   | 'LOGIN_GESTAO_RH' 
-  | 'RESET_SENHA_RH' 
-  | 'TENTATIVA_INVALIDA';
+  | 'RESET_SENHA_RH';
 
 export interface EmployeeAuth {
   matricula: string;
@@ -358,7 +353,7 @@ export interface InsalubrityRecord {
   matricula: string;
   nomeColaborador: string;
   sede: Branch;
-  competencia?: string; // "YYYY-MM" derivado de dataEvento (usado pelas Rules e portal)
+  competencia?: string; // "YYYY-MM" derivado de dataEvento (usado pelas Rules)
   funcao: string;
   dataEvento: string; // YYYY-MM-DD
   atividadeDesempenhada: string;
@@ -441,7 +436,7 @@ export interface PaystubRecord {
   nome: string; // Ex: "CLESIO DE SOUZA FARO LOPES"
   cargo: string; // Ex: "OPERADOR DE MOTONIVEL"
   sede: string; // Ex: "KO-DL", "KO", "BE", "MN"
-  competencia?: string; // "YYYY-MM" derivado de mesAno (usado pelas Rules e portal)
+  competencia?: string; // "YYYY-MM" derivado de mesAno (usado pelas Rules)
   periodo: string; // Ex: "07/2026" ou "01/07/2026 a 31/07/2026"
   mesAno: string; // Ex: "07-2026"
   ano: number; // Ex: 2026
@@ -474,7 +469,7 @@ export interface DispensaSptfRecord {
   saram?: string;
   secaoCanteiro: string; // Ex: "DECO-KO", "CANTEIRO COARI"
   employeeSede?: string; // Código canônico do canteiro (ex: "KO") usado pelas Rules e queries
-  competencia?: string; // "YYYY-MM" derivado de data (usado pelas Rules e portal)
+  competencia?: string; // "YYYY-MM" derivado de data (usado pelas Rules)
   data: string; // YYYY-MM-DD
   horarioInicio: string; // HH:mm (Ex: "13:00")
   horarioFim: string; // HH:mm (Ex: "16:00")

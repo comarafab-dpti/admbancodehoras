@@ -219,37 +219,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 6. COLABORADOR / AUTOATENDIMENTO
-    // ============================================================
-
-    /*
-     * MODELO DE SEGURANÇA MÍNIMA E SUFICIENTE (acordado):
-     *
-     * O Portal do Colaborador (/portal) não usa Firebase Auth.
-     * A localização do cadastro (matrícula/CPF) e a validação da
-     * senha acontecem no próprio app, lendo as coleções públicas
-     * abaixo. Escritas permanecem restritas a perfis autorizados.
-     */
-
-    function isColaborador() {
-      return isAuthenticated()
-        && request.auth.token.get('matricula', null) != null
-        && string(request.auth.token.matricula) != '';
-    }
-
-    function colaboradorMatricula() {
-      return isColaborador()
-        ? string(request.auth.token.matricula)
-        : '';
-    }
-
-    function pertenceAoColaborador(data) {
-      return isColaborador()
-        && data.get('matricula', '') == colaboradorMatricula();
-    }
-
-    // ============================================================
-    // 7. COMPETÊNCIAS
+    // 6. COMPETÊNCIAS
     // ============================================================
 
     function competenciaValida(competencia) {
@@ -307,7 +277,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 8. STATUS DA COMPETÊNCIA POR CANTEIRO
+    // 7. STATUS DA COMPETÊNCIA POR CANTEIRO
     // ============================================================
 
     function statusCompetenciaCanteiro(competencia, canteiro) {
@@ -377,16 +347,14 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 9. REGRAS DE LANÇAMENTOS
+    // 8. REGRAS DE LANÇAMENTOS
     // ============================================================
 
     match /lancamentos/{doc} {
 
       /*
        * Leitura restrita: Administradores globais consultam tudo;
-       * Perfis de canteiro consultam lançamentos do próprio canteiro;
-       * Colaboradores autenticados via Custom Token consultam apenas
-       * seus próprios registros (request.auth.token.matricula).
+       * Perfis de canteiro consultam lançamentos do próprio canteiro.
        */
       allow read: if
         isGlobalAdmin()
@@ -394,8 +362,7 @@ service cloud.firestore {
           isAdminActive()
           && (isGerenteCanteiro() || isDA())
           && documentoDoMeuCanteiro(resource.data)
-        )
-        || (isColaborador() && pertenceAoColaborador(resource.data));
+        );
 
       // Criar lançamento
       allow create: if
@@ -423,7 +390,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 10. DISPENSAS / ATESTADOS / SPTF
+    // 9. DISPENSAS / ATESTADOS / SPTF
     // ============================================================
 
     match /dispensas_sptf/{doc} {
@@ -432,7 +399,6 @@ service cloud.firestore {
       // (campo employeeSede gravado na emissão da guia).
       allow read: if
         isGlobalAdmin()
-        || (isColaborador() && pertenceAoColaborador(resource.data))
         || (
           (isGerenteCanteiro() || isDA())
           && documentoDoMeuCanteiro(resource.data)
@@ -461,16 +427,14 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 11. CONTRACHEQUES
+    // 10. CONTRACHEQUES
     // ============================================================
 
     match /contracheques/{doc} {
 
       /*
        * Leitura restrita: Administradores globais consultam tudo;
-       * Perfis de canteiro consultam contracheques do próprio canteiro;
-       * Colaboradores autenticados via Custom Token consultam apenas
-       * seus próprios contracheques (request.auth.token.matricula).
+       * Perfis de canteiro consultam contracheques do próprio canteiro.
        */
       allow read: if
         isGlobalAdmin()
@@ -478,8 +442,7 @@ service cloud.firestore {
           isAdminActive()
           && (isGerenteCanteiro() || isDA())
           && contrachequeCanteiroPermitido(resource.data)
-        )
-        || (isColaborador() && pertenceAoColaborador(resource.data));
+        );
 
       /*
        * Importação de folha NÃO exige competência aberta/fechada:
@@ -503,16 +466,14 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 12. INSALUBRIDADE - REGISTROS
+    // 11. INSALUBRIDADE - REGISTROS
     // ============================================================
 
     match /insalubridade_records/{doc} {
 
       /*
        * Leitura restrita: Administradores globais consultam tudo;
-       * Perfis de canteiro consultam apontamentos do próprio canteiro;
-       * Colaboradores autenticados via Custom Token consultam apenas
-       * seus próprios registros (request.auth.token.matricula).
+       * Perfis de canteiro consultam apontamentos do próprio canteiro.
        */
       allow read: if
         isGlobalAdmin()
@@ -520,8 +481,7 @@ service cloud.firestore {
           isAdminActive()
           && (isGerenteCanteiro() || isDA())
           && documentoDoMeuCanteiro(resource.data)
-        )
-        || (isColaborador() && pertenceAoColaborador(resource.data));
+        );
 
       allow create: if
         podeLancar()
@@ -546,7 +506,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 13. INSALUBRIDADE - CONSOLIDADO
+    // 12. INSALUBRIDADE - CONSOLIDADO
     // ============================================================
 
     match /insalubridade/{doc} {
@@ -581,7 +541,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 14. RESUMO MENSAL
+    // 13. RESUMO MENSAL
     // ============================================================
 
     match /resumo_mensal/{doc} {
@@ -601,7 +561,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 15. CONTROLE DE COMPETÊNCIAS
+    // 14. CONTROLE DE COMPETÊNCIAS
     // ============================================================
 
     match /competencias_controle/{doc} {
@@ -651,7 +611,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 16. CANTEIROS
+    // 15. CANTEIROS
     // ============================================================
 
     match /canteiros_obras/{doc} {
@@ -671,7 +631,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 17. UNIDADES ORGANIZACIONAIS
+    // 16. UNIDADES ORGANIZACIONAIS
     // ============================================================
 
     match /unidades_organizacionais/{doc} {
@@ -683,7 +643,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 18. CONFIGURAÇÕES DO SISTEMA
+    // 17. CONFIGURAÇÕES DO SISTEMA
     // ============================================================
 
     match /system_config/{doc} {
@@ -703,16 +663,14 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 19. COLABORADORES
+    // 18. COLABORADORES
     // ============================================================
 
     match /colaboradores/{doc} {
 
       /*
        * Leitura restrita: Administradores globais consultam tudo;
-       * Perfis de canteiro consultam colaboradores do próprio canteiro;
-       * Colaboradores autenticados via Custom Token consultam apenas
-       * o próprio cadastro (request.auth.token.matricula).
+       * Perfis de canteiro consultam colaboradores do próprio canteiro.
        */
       allow read: if
         isGlobalAdmin()
@@ -720,8 +678,7 @@ service cloud.firestore {
           isAdminActive()
           && (isGerenteCanteiro() || isDA())
           && documentoDoMeuCanteiro(resource.data)
-        )
-        || (isColaborador() && pertenceAoColaborador(resource.data));
+        );
 
       // Somente perfis globais (RH/TI) escrevem cadastros.
       allow create, update, delete: if
@@ -729,7 +686,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 20. CREDENCIAIS DOS COLABORADORES
+    // 19. CREDENCIAIS DOS COLABORADORES
     // ============================================================
 
     match /colaboradores_auth/{doc} {
@@ -744,7 +701,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 21. ADMIN USERS
+    // 20. ADMIN USERS
     // ============================================================
 
     /*
@@ -926,7 +883,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 22. USUARIOS_SISTEMA
+    // 21. USUARIOS_SISTEMA
     // ============================================================
 
     match /usuarios_sistema/{userId} {
@@ -1018,13 +975,12 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 23. LOGS DE ACESSO
+    // 22. LOGS DE ACESSO
     // ============================================================
 
     /*
      * Criação liberada para clientes autenticados enquanto não há
-     * Cloud Function dedicada. Ações do portal público (sem auth)
-     * permanecem registradas apenas no cache local do navegador.
+     * Cloud Function dedicada.
      */
     match /logs_acesso/{doc} {
 
@@ -1039,7 +995,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 24. LOGS DE AUDITORIA
+    // 23. LOGS DE AUDITORIA
     // ============================================================
 
     /*
@@ -1060,7 +1016,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 25. LOGS DO SISTEMA
+    // 24. LOGS DO SISTEMA
     // ============================================================
 
     match /system_logs/{doc} {
@@ -1088,7 +1044,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 26. HEALTHCHECK / TEST
+    // 25. HEALTHCHECK / TEST
     // ============================================================
 
     match /test/{doc} {
@@ -1096,7 +1052,7 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 27. NEGAR TUDO QUE NÃO FOI DEFINIDO
+    // 26. NEGAR TUDO QUE NÃO FOI DEFINIDO
     // ============================================================
 
     match /{document=**} {

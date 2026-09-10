@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Employee, TimeRecord, Attachment, CompensationStatus, InsalubrityRecord, ConstructionSite, PaystubRecord } from '@/src/shared/types';
 import { ComaraLogo } from '@/src/shared/components/ComaraLogo';
-import { ContrachequeMirrorView } from '@/src/portal/ContrachequeMirrorView';
+import { ContrachequeMirrorView } from './ContrachequeMirrorView';
 import { getSignaturesForCanteiro } from '@/src/shared/services/canteiroService';
 import { useInstitution } from '@/src/shared/contexts/InstitutionContext';
 import { IconButton } from '@/src/shared/components/IconButton';

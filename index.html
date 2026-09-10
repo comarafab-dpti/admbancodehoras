@@ -4,41 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="google" content="notranslate" />
-    <title>COMARA • Sistema de Gestão de Banco de Horas SPTF</title>
+    <title>COMARA • Gestão Administrativa</title>
     <meta name="theme-color" content="#16243D" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="COMARA" />
-    <meta name="application-name" content="COMARA" />
+    <meta name="apple-mobile-web-app-title" content="COMARA Admin" />
+    <meta name="application-name" content="COMARA Admin" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta name="description" content="Sistema oficial de gestão de Banco de Horas SPTF da COMARA com regras automáticas, emissão de dispensas em 2 vias, gestão de contracheques, laudos de insalubridade, trilha de auditoria e logs de segurança LGPD no Cloud Firestore." />
-    <meta property="og:title" content="Sistema de Gestão de Banco de Horas SPTF" />
-    <meta property="og:description" content="Sistema oficial de gestão de Banco de Horas SPTF da COMARA com regras automáticas, emissão de dispensas em 2 vias, gestão de contracheques, laudos de insalubridade, trilha de auditoria e logs de segurança LGPD no Cloud Firestore." />
+    <meta name="description" content="Sistema oficial de gestão administrativa de Banco de Horas SPTF da COMARA com regras automáticas, emissão de dispensas em 2 vias, gestão de contracheques, laudos de insalubridade, trilha de auditoria e logs de segurança LGPD no Cloud Firestore." />
+    <meta property="og:title" content="COMARA - Gestão Administrativa" />
+    <meta property="og:description" content="Sistema oficial de gestão administrativa de Banco de Horas SPTF da COMARA." />
     <meta property="og:image" content="/logo.png" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="/logo.png" />
     <script>
       (function () {
-        var hostname = window.location.hostname.toLowerCase();
         var pathname = window.location.pathname.toLowerCase();
         var search = window.location.search;
         var hash = window.location.hash;
-        var isAdmin = hostname === 'admbancodehoras.ai.studio' || pathname.startsWith('/admin');
 
-        if (isAdmin) {
-          if (!pathname.startsWith('/admin') && !pathname.endsWith('admin.html')) {
-            window.location.replace('/admin' + search + hash);
-          }
-        } else {
-          if (pathname === '/' || pathname === '/index.html') {
-            window.location.replace('/portal' + search + hash);
-          }
+        if (!pathname.startsWith('/admin') && !pathname.endsWith('admin.html')) {
+          window.location.replace('/admin' + search + hash);
         }
       })();
     </script>
@@ -48,4 +40,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

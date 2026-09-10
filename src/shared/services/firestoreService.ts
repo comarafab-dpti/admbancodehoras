@@ -1472,7 +1472,7 @@ export const firestoreService = {
       } else if (normalizedCanteiro) {
         q = query(collection(db, path), where('sede', '==', normalizedCanteiro), limit(500));
       } else {
-        // Carrega os contracheques de todas as competências para visualização unificada na gestão e portal
+        // Carrega os contracheques de todas as competências para visualização unificada na gestão
         q = query(collection(db, path), limit(1000));
       }
 

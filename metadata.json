@@ -1,6 +1,6 @@
 {
-  "name": "Sistema de Gestão de Banco de Horas SPTF",
-  "description": "Sistema oficial de gestão de Banco de Horas SPTF da COMARA com regras automáticas, emissão de dispensas em 2 vias, gestão de contracheques, laudos de insalubridade, trilha de auditoria e logs de segurança LGPD no Cloud Firestore.",
+  "name": "COMARA - Gestão Administrativa",
+  "description": "Sistema oficial de gestão administrativa de Banco de Horas SPTF da COMARA com regras automáticas, emissão de dispensas em 2 vias, gestão de contracheques, laudos de insalubridade, trilha de auditoria e logs de segurança LGPD no Cloud Firestore.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

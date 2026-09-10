@@ -6,22 +6,18 @@ import {
   ShieldCheck, 
   AlertCircle, 
   CheckCircle2, 
-  UserCheck, 
   Cloud, 
-  ChevronRight,
   Lock,
   Copy,
   Check
 } from 'lucide-react';
 
 interface LoginViewProps {
-  onOpenSelfService: () => void;
   onLoginSuccess?: (session: AuthSession) => void;
   theme?: 'dark' | 'light';
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
-  onOpenSelfService,
   onLoginSuccess,
   theme = 'dark',
 }) => {
@@ -299,35 +295,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </div>
           </div>
 
-          {/* Atalho para o Portal do Colaborador (Autoatendimento) */}
-          <div className={`p-4 rounded-2xl border transition-all ${
-            isDark ? 'bg-[#16243D]/80 border-[#243756] hover:border-blue-500/40' : 'bg-white border-slate-200 hover:border-blue-400'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Portal do Colaborador
-                  </h3>
-                  <p className={`text-[10px] ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>
-                    Consulta simplificada e individual por Matrícula
-                  </p>
-                </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={onOpenSelfService}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-98 cursor-pointer"
-              >
-                <span>Acessar</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
 
           {/* Compliance Footer Note */}
           <div className="text-center text-[10px] text-[#94A3B8] flex items-center justify-center gap-1.5">

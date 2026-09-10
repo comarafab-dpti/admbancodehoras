@@ -1,14 +1,13 @@
-import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection, query, orderBy, limit, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { 
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signInAnonymously,
-  signInWithCustomToken,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from './firebase';
-import { Employee, EmployeeAuth, AccessLog, AccessLogType, AdminUser, AdminRole, AuthSession } from '../types';
+import { auth, googleProvider, db } from './firebase';
+import { EmployeeAuth, AccessLog, AccessLogType, AdminUser, AdminRole, AuthSession } from '../types';
 
 export function getFirebaseAuthErrorMessage(errorCode: string, defaultMessage?: string): string {
   switch (errorCode) {
@@ -47,7 +46,6 @@ export function getFirebaseAuthErrorMessage(errorCode: string, defaultMessage?: 
 const COLLECTIONS = {
   COLABORADORES_AUTH: 'colaboradores_auth',
   LOGS_ACESSO: 'logs_acesso',
-  SYSTEM_LOGS: 'system_logs',
   COLABORADORES: 'colaboradores',
   ADMIN_USERS: 'admin_users',
 };
@@ -62,37 +60,6 @@ function sanitize<T extends Record<string, any>>(obj: T): Record<string, any> {
   return clean;
 }
 
-// Normalizador seguro de Datas (converte DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD ou ISO para YYYY-MM-DD)
-export function normalizeDateString(dateStr?: string): string {
-  if (!dateStr) return '';
-  let trimmed = dateStr.trim();
-  if (!trimmed) return '';
-
-  if (trimmed.includes('T')) {
-    trimmed = trimmed.split('T')[0];
-  }
-
-  // Formato DD/MM/YYYY ou DD-MM-YYYY ou DD.MM.YYYY
-  const brMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-  if (brMatch) {
-    const day = brMatch[1].padStart(2, '0');
-    const month = brMatch[2].padStart(2, '0');
-    const year = brMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-
-  // Formato YYYY-MM-DD ou YYYY/MM/DD
-  const isoMatch = trimmed.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-  if (isoMatch) {
-    const year = isoMatch[1];
-    const month = isoMatch[2].padStart(2, '0');
-    const day = isoMatch[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  return trimmed;
-}
-
 // Simple SHA-256 hash helper using native crypto
 export async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -100,100 +67,6 @@ export async function hashPassword(password: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-export async function verifyPasswordHash(password: string, passwordHash: string): Promise<boolean> {
-  return (await hashPassword(password)) === passwordHash;
-}
-
-export function isEmployeeAuthFunctionConfigured(): boolean {
-  return Boolean(((import.meta as any).env?.VITE_EMPLOYEE_AUTH_FUNCTION_URL || '').trim());
-}
-
-export async function authenticateEmployeeWithCustomToken(matricula: string, password: string): Promise<Employee | null> {
-  const endpoint = ((import.meta as any).env?.VITE_EMPLOYEE_AUTH_FUNCTION_URL || '').trim();
-  if (!endpoint) return null;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ matricula, password }),
-  });
-  if (!response.ok) {
-    throw new Error(`Falha na autenticação do colaborador (${response.status}).`);
-  }
-
-  const payload = await response.json() as { token?: string };
-  if (!payload.token) throw new Error('A função de autenticação não retornou um Custom Token.');
-  await signInWithCustomToken(auth, payload.token);
-  const employeeSnapshot = await getDoc(doc(db, COLLECTIONS.COLABORADORES, matricula));
-  return employeeSnapshot.exists()
-    ? mapEmployeeSnapshot({ id: employeeSnapshot.id, data: () => employeeSnapshot.data() })
-    : null;
-}
-
-function normalizeEmployeeIdentifier(value: string): { raw: string; digits: string } {
-  const raw = value.trim().toUpperCase();
-  return { raw, digits: raw.replace(/\D/g, '') };
-}
-
-function mapEmployeeSnapshot(snapshot: { id: string; data: () => Record<string, any> }): Employee {
-  const data = snapshot.data() as Employee;
-  return {
-    ...data,
-    id: data.id || snapshot.id,
-    matricula: data.matricula || snapshot.id,
-  };
-}
-
-export async function findEmployeeForPublicLogin(
-  identifier: string,
-  employees: Employee[] = []
-): Promise<Employee | null> {
-  const { raw, digits } = normalizeEmployeeIdentifier(identifier);
-  if (!raw) return null;
-
-  const matchesIdentifier = (employee: Employee) => {
-    const matricula = (employee.matricula || '').trim().toUpperCase();
-    const matriculaSemZeros = matricula.replace(/^0+/, '');
-    const cpf = (employee.cpf || '').replace(/\D/g, '');
-    return matricula === raw || matriculaSemZeros === raw.replace(/^0+/, '') ||
-      (digits.length >= 9 && (cpf === digits || cpf.endsWith(digits)));
-  };
-
-  const cachedMatch = employees.find(matchesIdentifier);
-  if (cachedMatch) return cachedMatch;
-
-  const documentIds = Array.from(new Set([raw, raw.replace(/^0+/, '')].filter(Boolean)));
-  try {
-    for (const documentId of documentIds) {
-      const snapshot = await getDoc(doc(db, COLLECTIONS.COLABORADORES, documentId));
-      if (snapshot.exists()) {
-        const employee = mapEmployeeSnapshot({ id: snapshot.id, data: () => snapshot.data() });
-        if (matchesIdentifier(employee) || employee.matricula === documentId) return employee;
-      }
-    }
-
-    const matriculaSnapshot = await getDocs(
-      query(collection(db, COLLECTIONS.COLABORADORES), where('matricula', '==', raw), limit(1))
-    );
-    if (!matriculaSnapshot.empty) {
-      return mapEmployeeSnapshot(matriculaSnapshot.docs[0]);
-    }
-
-    if (digits.length >= 9) {
-      for (const cpfValue of [raw, digits]) {
-        const cpfSnapshot = await getDocs(
-          query(collection(db, COLLECTIONS.COLABORADORES), where('cpf', '==', cpfValue), limit(1))
-        );
-        if (!cpfSnapshot.empty) return mapEmployeeSnapshot(cpfSnapshot.docs[0]);
-      }
-    }
-  } catch (error) {
-    console.warn('Busca de colaborador para autoatendimento indisponível:', error);
-  }
-
-  return null;
 }
 
 // Local cache keys
@@ -329,7 +202,6 @@ export async function processAuthenticatedUser(firebaseUser: FirebaseUser): Prom
       console.warn('[Auth] Erro ao salvar auto-cadastro inicial no Firestore:', saveErr);
       adminDoc = newDoc;
     }
-  } else {
   }
 
   // Verificação de usuário desativado / bloqueado
@@ -423,365 +295,6 @@ export const authService = {
   },
 
   // -------------------------------------------------------------
-  // AUTENTICAÇÃO DO COLABORADOR
-  // -------------------------------------------------------------
-  async getEmployeeAuth(matricula: string): Promise<EmployeeAuth | null> {
-    const cleanMatricula = matricula.trim().toUpperCase();
-    const local = getLocalAuths()[cleanMatricula];
-
-    try {
-      const docRef = doc(db, COLLECTIONS.COLABORADORES_AUTH, cleanMatricula);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data() as EmployeeAuth;
-        saveLocalAuth(cleanMatricula, data);
-        return data;
-      }
-    } catch (e) {
-      console.warn('Busca de credencial Firestore offline, usando cache local:', e);
-    }
-
-    return local || null;
-  },
-
-  async verifyEmployeePassword(
-    matricula: string,
-    passwordAttempt: string,
-    employee: Employee
-  ): Promise<{ success: boolean; message: string; requiresFirstAccessSetup?: boolean }> {
-    const cleanMatricula = matricula.trim().toUpperCase();
-
-    // Em produção, a Function é a autoridade da senha e entrega a claim matricula.
-    // O modo legado só permanece disponível explicitamente em localhost sem endpoint.
-    const authEndpointConfigured = isEmployeeAuthFunctionConfigured();
-    if (authEndpointConfigured) {
-      try {
-        const employeeFromToken = await authenticateEmployeeWithCustomToken(cleanMatricula, passwordAttempt);
-        if (!employeeFromToken) {
-          return { success: false, message: 'Cadastro de colaborador não localizado.' };
-        }
-        await this.logAccess(cleanMatricula, employee.nome, 'LOGIN_COLABORADOR', true, 'Autenticação via Firebase Custom Token');
-        return { success: true, message: 'Autenticado com sucesso!' };
-      } catch (error) {
-        console.warn('Falha na autenticação via Cloud Function:', error);
-        return { success: false, message: 'Não foi possível validar o acesso agora. Tente novamente.' };
-      }
-    }
-
-    const allowLegacyAuth = Boolean((import.meta as any).env?.DEV) && typeof window !== 'undefined' &&
-      ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    if (!allowLegacyAuth) {
-      return { success: false, message: 'A autenticação do portal ainda não está configurada neste domínio.' };
-    }
-
-    const authData = await this.getEmployeeAuth(cleanMatricula);
-
-    // Se o colaborador ainda não definiu senha
-    if (!authData || !authData.senhaDefinida || !authData.passwordHash) {
-      await this.logAccess(
-        cleanMatricula,
-        employee.nome,
-        'TENTATIVA_INVALIDA',
-        false,
-        'Tentativa de acesso sem senha previamente cadastrada'
-      );
-      return {
-        success: false,
-        requiresFirstAccessSetup: true,
-        message: 'Primeiro acesso detectado! Você precisa definir sua senha através da Validação Tripla.',
-      };
-    }
-
-    if (await verifyPasswordHash(passwordAttempt, authData.passwordHash)) {
-      const nowIso = new Date().toISOString();
-      const updated: EmployeeAuth = {
-        ...authData,
-        senhaDefinida: true,
-        ultimoAcesso: nowIso,
-        atualizadoEm: nowIso,
-      };
-      saveLocalAuth(cleanMatricula, updated);
-
-      try {
-        await Promise.all([
-          setDoc(doc(db, COLLECTIONS.COLABORADORES_AUTH, cleanMatricula), updated, { merge: true }),
-          setDoc(doc(db, COLLECTIONS.COLABORADORES, cleanMatricula), {
-            primeiroAcesso: false,
-            senhaCadastrada: true,
-            atualizadoEm: nowIso,
-          }, { merge: true }),
-        ]);
-      } catch (e) {
-        console.warn('Erro ao atualizar persistência no Firestore:', e);
-      }
-
-      await this.logAccess(
-        cleanMatricula,
-        employee.nome,
-        'LOGIN_COLABORADOR',
-        true,
-        'Autenticação individual realizada com sucesso'
-      );
-
-      return { success: true, message: 'Autenticado com sucesso!' };
-    } else {
-      await this.logAccess(
-        cleanMatricula,
-        employee.nome,
-        'TENTATIVA_INVALIDA',
-        false,
-        'Senha incorreta digitada na consulta'
-      );
-      return { success: false, message: 'Senha incorreta. Verifique suas credenciais.' };
-    }
-  },
-
-  // -------------------------------------------------------------
-  // VALIDAÇÃO CADASTRAL PARA RECUPERAÇÃO / PRIMEIRO ACESSO (100% FIRESTORE - LGPD)
-  // -------------------------------------------------------------
-  async validateCollaboratorForReset(
-    matricula: string,
-    emailAttempt: string,
-    employeesList: Employee[] = []
-  ): Promise<{ success: boolean; employee?: Employee; message: string }> {
-    const cleanMat = matricula.trim().toUpperCase();
-    if (!cleanMat) {
-      return { 
-        success: false, 
-        message: 'Por favor, informe a Matrícula do colaborador.' 
-      };
-    }
-
-    const cleanInputEmail = emailAttempt.trim().toLowerCase();
-    if (!cleanInputEmail || !cleanInputEmail.includes('@')) {
-      return { 
-        success: false, 
-        message: 'Por favor, informe o E-mail cadastrado válido.' 
-      };
-    }
-
-    // 1. Busca colaborador (no cache ou diretamente na coleção 'colaboradores' do Firestore)
-    let matched: Employee | undefined = employeesList.find(
-      (e) => e.matricula.trim().toUpperCase() === cleanMat ||
-             e.matricula.replace(/^0+/, '').toUpperCase() === cleanMat.replace(/^0+/, '')
-    );
-
-    if (!matched) {
-      try {
-        const docRef = doc(db, COLLECTIONS.COLABORADORES, cleanMat);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          matched = docSnap.data() as Employee;
-        } else {
-          // Busca secundária caso o ID seja diferente da matrícula
-          const q = query(collection(db, COLLECTIONS.COLABORADORES), limit(200));
-          const snapAll = await getDocs(q);
-          snapAll.forEach((d) => {
-            const data = d.data() as Employee;
-            if (
-              data.matricula?.trim().toUpperCase() === cleanMat ||
-              data.matricula?.replace(/^0+/, '').toUpperCase() === cleanMat.replace(/^0+/, '')
-            ) {
-              matched = data;
-            }
-          });
-        }
-      } catch (err) {
-        console.warn('Erro ao consultar Firestore para recuperação de senha:', err);
-      }
-    }
-
-    if (!matched) {
-      await this.logAccess(
-        cleanMat,
-        'Desconhecido',
-        'RECUPERACAO_SENHA',
-        false,
-        'Tentativa de recuperação: Matrícula não localizada no cadastro'
-      );
-      return { 
-        success: false, 
-        message: 'Dados informados não conferem com o cadastro. Procure o setor de RH (DA).' 
-      };
-    }
-
-    // 2. Validação cadastral do E-mail cadastrado
-    const registeredEmailClean = (matched.email || '').trim().toLowerCase();
-
-    let isEmailValid = false;
-    if (registeredEmailClean) {
-      isEmailValid = (cleanInputEmail === registeredEmailClean);
-    } else {
-      // Se não possui e-mail cadastrado na ficha, aceita e-mail corporativo válido informado
-      isEmailValid = cleanInputEmail.length >= 5 && cleanInputEmail.includes('@');
-    }
-
-    if (!isEmailValid) {
-      await this.logAccess(
-        cleanMat,
-        matched.nome,
-        'RECUPERACAO_SENHA',
-        false,
-        'Tentativa de recuperação: E-mail divergente do cadastro'
-      );
-      return { 
-        success: false, 
-        message: 'O e-mail informado não confere com o cadastro desta matrícula. Procure o setor de RH (DA).' 
-      };
-    }
-
-    // Validação bem-sucedida!
-    await this.logAccess(
-      cleanMat,
-      matched.nome,
-      'RECUPERACAO_SENHA',
-      true,
-      'Identidade cadastral validada com sucesso via Matrícula + E-mail para redefinição de senha'
-    );
-
-    return {
-      success: true,
-      employee: matched,
-      message: `Identidade confirmada para ${matched.nome}! Agora defina sua nova senha.`,
-    };
-  },
-
-  // -------------------------------------------------------------
-  // ATUALIZAÇÃO DIRETA DA SENHA NO FIRESTORE (SEM FIREBASE AUTH)
-  // -------------------------------------------------------------
-  async resetCollaboratorPassword(
-    matricula: string,
-    newPassword: string,
-    employee?: Employee,
-    emailUsed?: string
-  ): Promise<{ success: boolean; message: string }> {
-    const cleanMat = matricula.trim().toUpperCase();
-    if (!cleanMat) {
-      return { success: false, message: 'Matrícula inválida.' };
-    }
-
-    if (newPassword.length < 4) {
-      return { success: false, message: 'A nova senha deve ter no mínimo 4 caracteres.' };
-    }
-
-    const passwordHash = await hashPassword(newPassword);
-    const nowIso = new Date().toISOString();
-    const cleanEmail = (employee?.email || emailUsed || '').trim().toLowerCase();
-
-    const authDataToSave = sanitize({
-      matricula: cleanMat,
-      passwordHash,
-      senhaDefinida: true,
-      email: cleanEmail,
-      primeiroAcesso: false,
-      senhaCadastrada: true,
-      tokenRecuperacao: null,
-      tokenExpiracao: null,
-      ultimoAcesso: nowIso,
-      atualizadoEm: nowIso,
-    });
-
-    // Salva no cache local para resiliência offline
-    saveLocalAuth(cleanMat, {
-      matricula: cleanMat,
-      passwordHash,
-      senhaDefinida: true,
-      email: cleanEmail,
-      ultimoAcesso: nowIso,
-      atualizadoEm: nowIso,
-    });
-
-    // Atualiza diretamente no Firestore as coleções 'colaboradores_auth' e 'colaboradores'
-    try {
-      await Promise.all([
-        setDoc(doc(db, COLLECTIONS.COLABORADORES_AUTH, cleanMat), authDataToSave, { merge: true }),
-        setDoc(doc(db, COLLECTIONS.COLABORADORES, cleanMat), {
-          primeiroAcesso: false,
-          senhaCadastrada: true,
-          atualizadoEm: nowIso,
-          ...(cleanEmail ? { email: cleanEmail } : {}),
-        }, { merge: true }),
-      ]);
-    } catch (err) {
-      console.warn('Erro na sincronização Firestore (operando com cache local seguro):', err);
-    }
-
-    if (employee) {
-      employee.primeiroAcesso = false;
-      employee.senhaCadastrada = true;
-      employee.atualizadoEm = nowIso;
-      if (cleanEmail && !employee.email) {
-        employee.email = cleanEmail;
-      }
-    }
-
-    await this.logAccess(
-      cleanMat,
-      employee?.nome || cleanMat,
-      'DEFINICAO_SENHA',
-      true,
-      'Senha redefinida com sucesso'
-    );
-
-    return {
-      success: true,
-      message: 'Senha redefinida com sucesso! Você já pode fazer login.',
-    };
-  },
-
-  // -------------------------------------------------------------
-  // RECUPERAÇÃO E DEFINIÇÃO DE SENHA LGPD (COMPATIBILIDADE)
-  // -------------------------------------------------------------
-  async resetPasswordByMatriculaAndEmail(
-    matricula: string,
-    emailAttempt: string,
-    newPassword: string,
-    employeesList: Employee[]
-  ): Promise<{ success: boolean; message: string }> {
-    const valRes = await this.validateCollaboratorForReset(
-      matricula,
-      emailAttempt,
-      employeesList
-    );
-
-    if (!valRes.success || !valRes.employee) {
-      return { success: false, message: valRes.message };
-    }
-
-    return this.resetCollaboratorPassword(
-      valRes.employee.matricula,
-      newPassword,
-      valRes.employee,
-      emailAttempt
-    );
-  },
-
-  // -------------------------------------------------------------
-  // VALIDAÇÃO DE IDENTIDADE CADASTRAL (MATRÍCULA + E-MAIL)
-  // -------------------------------------------------------------
-  async validateTripleIdentity(
-    matricula: string,
-    emailOrCpfAttempt: string,
-    _dataNascimentoAttempt?: string,
-    employeesList: Employee[] = []
-  ): Promise<{ success: boolean; employee?: Employee; message: string }> {
-    return this.validateCollaboratorForReset(matricula, emailOrCpfAttempt, employeesList);
-  },
-
-  // -------------------------------------------------------------
-  // SALVAR NOVA SENHA APÓS VALIDAÇÃO CADASTRAL
-  // -------------------------------------------------------------
-  async confirmNewPasswordWithTripleValidation(
-    matricula: string,
-    employee: Employee,
-    _cpfAttempt: string,
-    _dataNascimentoAttempt: string,
-    newPassword: string
-  ): Promise<{ success: boolean; message: string }> {
-    return this.resetCollaboratorPassword(matricula, newPassword, employee);
-  },
-
-  // -------------------------------------------------------------
   // DEFINIÇÃO / RESET DE SENHA PRESENCIAL PELO GESTOR DE RH
   // -------------------------------------------------------------
   async setPasswordByAdmin(
@@ -843,9 +356,7 @@ export const authService = {
   // -------------------------------------------------------------
   saveCurrentSession(session: AuthSession): void {
     try {
-      // Usa sessionStorage para que a sessão expire imediatamente ao fechar o navegador/aba
       sessionStorage.setItem('banco_horas_auth_session', JSON.stringify(session));
-      // Garante remoção de chaves legadas no localStorage
       localStorage.removeItem('banco_horas_auth_session');
     } catch (e) {
       console.warn('Erro ao salvar sessão temporária:', e);
@@ -854,7 +365,6 @@ export const authService = {
 
   getCurrentSession(): AuthSession | null {
     try {
-      // Prioriza sessionStorage (sessão por aba)
       const raw = sessionStorage.getItem('banco_horas_auth_session');
       return raw ? JSON.parse(raw) : null;
     } catch {
@@ -875,10 +385,6 @@ export const authService = {
   // AUTENTICAÇÃO ADMINISTRATIVA — APENAS GOOGLE WORKSPACE
   // -------------------------------------------------------------
   // O login administrativo é exclusivamente via Google Workspace (signInWithGoogle).
-  // Os antigos fluxos de e-mail/senha (verifyAdminLogin / createAdminAccount) foram
-  // removidos: não havia formulário de e-mail/senha na UI e o pré-cadastro de
-  // usuários é feito pela tela de RBAC (firestoreService.saveAdminUser), que grava
-  // o documento em admin_users para casamento por e-mail no próximo login Google.
   // A regra das 48h da passagem de bastão permanece em checkAndRevokeExpiredTransitions.
 
   // -------------------------------------------------------------
@@ -1039,5 +545,3 @@ export const authService = {
     }
   }
 };
-
-

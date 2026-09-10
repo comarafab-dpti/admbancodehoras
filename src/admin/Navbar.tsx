@@ -134,14 +134,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="hidden sm:inline text-slate-400">
             Painel Operacional RH & Fiscalização
           </span>
-          <a
-            href="/portal"
-            className="text-[10px] font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors flex items-center gap-1"
-            title="Ir para o Portal do Colaborador"
-          >
-            <span>Acessar Portal</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
       </div>
 

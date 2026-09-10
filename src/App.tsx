@@ -323,7 +323,7 @@ export default function App() {
   // -------------------------------------------------------------
   // 1. Sync Firestore em Tempo Real — CONJUNTO ÚNICO DE SUBSCRIPTIONS
   //    Dados operacionais (colaboradores, lançamentos, insalubridade e
-  //    contracheques) ficam sempre ativos para o portal e para a gestão,
+  //    contracheques) ficam sempre ativos para a gestão,
   //    com filtragem de canteiro (tenancy) aplicada quando o usuário
   //    logado é restrito. Subscriptions administrativas (admins,
   //    dispensas, canteiros e configuração) só são abertas com sessão
@@ -352,7 +352,7 @@ export default function App() {
 
     const unsubs: Array<() => void> = [];
 
-    // Subscribe to Employees in Firestore (sempre ativo: portal + gestão)
+    // Subscribe to Employees in Firestore (sempre ativo: gestão)
     unsubs.push(firestoreService.subscribeEmployees(
       (emps) => {
         setEmployees(emps);
@@ -381,7 +381,7 @@ export default function App() {
       activeCanteiro
     ));
 
-    // Subscribe to Time Records in Firestore (sempre ativo: portal + gestão)
+    // Subscribe to Time Records in Firestore (sempre ativo: gestão)
     unsubs.push(firestoreService.subscribeTimeRecords(
       (recs) => {
         setRecords(recs);
@@ -405,7 +405,7 @@ export default function App() {
       activeCanteiro
     ));
 
-    // Subscribe to Insalubrity Records in Firestore (sempre ativo: portal + gestão)
+    // Subscribe to Insalubrity Records in Firestore (sempre ativo: gestão)
     unsubs.push(firestoreService.subscribeInsalubrityRecords(
       (items) => {
         setInsalubrityRecords(items);
@@ -424,7 +424,7 @@ export default function App() {
       activeCanteiro
     ));
 
-    // Subscribe to Paystubs (Contracheques Digitais) in Firestore (sempre ativo: portal + gestão)
+    // Subscribe to Paystubs (Contracheques Digitais) in Firestore (sempre ativo: gestão)
     unsubs.push(firestoreService.subscribePaystubs(
       (items) => {
         setPaystubs(items);
@@ -534,13 +534,13 @@ export default function App() {
   }, [initFirestoreSubscriptions, currentUser?.email, isAuthLoading]);
 
   // -------------------------------------------------------------
-  // Rotas simplificadas: /admin (gestão) e /portal (colaborador)
+  // Rotas simplificadas: /admin (gestão administrativa)
   // -------------------------------------------------------------
   useEffect(() => {
     if (isAuthLoading) return;
     // Preserva /admin aguardando login de gestão (modal aberto abaixo)
     if (!currentUser && window.location.pathname.startsWith('/admin')) return;
-    const target = currentUser ? '/admin' : '/portal';
+    const target = '/admin';
     if (window.location.pathname !== target) {
       window.history.replaceState({}, '', target);
     }
@@ -1855,8 +1855,7 @@ export default function App() {
     );
   }
 
-  // O portal possui entry point próprio em src/portal/main.tsx.
-  // O entry administrativo nunca renderiza a experiência do colaborador.
+  // O entry administrativo é o único entry point da aplicação.
   if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">

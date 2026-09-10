@@ -1,8 +1,6 @@
 import './index.css';
 
-const hostname = window.location.hostname.toLowerCase();
 const pathname = window.location.pathname.toLowerCase();
-const isAdmin = hostname === 'admbancodehoras.ai.studio' || pathname.startsWith('/admin');
 
 function handleError(error: unknown) {
   console.error('[COMARA] Falha ao carregar o entry point:', error);
@@ -12,18 +10,8 @@ function handleError(error: unknown) {
   }
 }
 
-if (isAdmin) {
-  if (!pathname.startsWith('/admin') && !pathname.endsWith('admin.html')) {
-    window.location.replace('/admin' + window.location.search + window.location.hash);
-  } else {
-    import('./admin/main').catch(handleError);
-  }
+if (!pathname.startsWith('/admin') && !pathname.endsWith('admin.html')) {
+  window.location.replace('/admin' + window.location.search + window.location.hash);
 } else {
-  if (pathname === '/' || pathname === '/index.html') {
-    window.location.replace('/portal' + window.location.search + window.location.hash);
-  } else {
-    import('./portal/main').catch(handleError);
-  }
+  import('./admin/main').catch(handleError);
 }
-
-

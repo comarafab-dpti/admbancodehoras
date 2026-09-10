@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Employee, PaystubRecord, AdminRole, ConstructionSite } from '@/src/shared/types';
-import { ContrachequeMirrorView } from '@/src/portal/ContrachequeMirrorView';
+import { ContrachequeMirrorView } from './ContrachequeMirrorView';
 import { ImportContrachequeModal } from './ImportContrachequeModal';
 import { normalizeMatricula } from '@/src/shared/utils/pdfParser';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
