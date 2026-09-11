@@ -2,7 +2,11 @@
 
 - Run the app with `docker compose -f docker-compose.base44.yml up -d`.
 - The frontend is a Vite development server on port 3000 with source bind-mounted for live reload.
-- Firebase client configuration is committed in `firebase-applet-config.json`; the UI falls back to browser-local data when Firestore is unavailable or access is denied.
+- **Banco de dados: Supabase (PostgreSQL).** O Firebase/Firestore foi removido. As chaves vêm de `/run/base44/app.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) via `env_file` no compose.
+- O esquema e as políticas RLS estão em `supabase/migrations/001_schema.sql` e `002_rls.sql` — precisam ser executados no SQL Editor do projeto Supabase (não há como rodar DDL pelo sandbox). O modelo é documental: cada coleção legada virou tabela `(id text, data jsonb)`; ver `README-SUPABASE.md`.
+- Os dados legados do Firestore são carregados com `npm run migrate:firestore` (script `scripts/migrate-firestore-to-supabase.mjs`, usa `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`; JSONs em `scripts/firestore-export/`).
+- Camada de dados: `src/shared/services/db.ts` (adaptador com API compatível `doc/setDoc/onSnapshot/writeBatch/runTransaction` sobre o Supabase) e `src/shared/services/supabase.ts` (cliente). `dbService.ts` é o antigo `firestoreService.ts`.
+- Login mestre de contingência exige usuário e-mail/senha real no Supabase Auth (Authentication > Users) e senha digitada no modal. Google OAuth é sempre por redirecionamento (sem popup no Supabase Auth).
 - `GEMINI_API_KEY` appears only as an optional template entry and is not required by the current source or at boot.
 - Verify locally with `curl -f http://localhost:3000/` and externally with a non-localhost Host header.
 - Type-check with `docker compose -f docker-compose.base44.yml exec -T web npm run lint`.

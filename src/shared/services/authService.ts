@@ -90,7 +90,7 @@ function getLocalLogs(): AccessLog[] {
     const raw = localStorage.getItem(LOCAL_LOGS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
-    return {};
+    return [];
   }
 }
 

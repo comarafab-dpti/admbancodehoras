@@ -168,8 +168,14 @@ function currentAuthEmail(): string | null {
 }
 
 export function logDbError(error: unknown, operationType: OperationType, path: string | null): DbErrorInfo {
+  const msg =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null
+        ? ((error as any).message ?? JSON.stringify(error))
+        : String(error);
   const errInfo: DbErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: msg,
     operationType,
     path,
     authInfo: {
@@ -322,8 +328,11 @@ async function runQuery(q: QueryShape): Promise<QuerySnapshot> {
 // LEITURAS
 // ============================================================================
 
-export async function getDocs(q: QueryShape): Promise<QuerySnapshot> {
-  return runQuery(q);
+export async function getDocs(q: QueryShape | CollectionReference): Promise<QuerySnapshot> {
+  if ((q as any).__kind === 'collection') {
+    return runQuery(query(q as CollectionReference));
+  }
+  return runQuery(q as QueryShape);
 }
 
 export async function getDoc(ref: DocumentReference): Promise<DocumentSnapshot> {
@@ -663,7 +672,7 @@ export async function signInWithRedirect(_auth: typeof auth, _provider?: typeof 
  * Legado: o retorno do OAuth Google é processado automaticamente pelo
  * onAuthStateChanged (detectSessionInUrl). Nada a fazer aqui.
  */
-export async function getRedirectResult(_auth: typeof auth): Promise<{ user: null } | null> {
+export async function getRedirectResult(_auth?: any): Promise<any> {
   return null;
 }
 

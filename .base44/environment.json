@@ -2,5 +2,28 @@
   "previewPort": 3000,
   "healthPath": "/",
   "startCommand": "docker compose -f docker-compose.base44.yml up -d",
-  "secrets": []
+  "secrets": [
+    {
+      "name": "VITE_SUPABASE_URL",
+      "description": "Project URL do Supabase (Settings > API)",
+      "requiredAtBoot": true,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "VITE_SUPABASE_ANON_KEY",
+      "description": "Anon public key do Supabase (Settings > API)",
+      "requiredAtBoot": true,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "SUPABASE_URL",
+      "description": "Project URL usada apenas pelo script de migração (não vai ao frontend)",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "SUPABASE_SERVICE_ROLE_KEY",
+      "description": "Service role key usada apenas pelo script de migração (não vai ao frontend)",
+      "requiredAtBoot": false
+    }
+  ]
 }
