@@ -12,11 +12,11 @@
  * - Atomic UPSERT operations (create or update)
  */
 
-import { collection, query, where, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc } from './db';
+import { db } from './db';
 import { Employee, ConstructionSite } from '../types';
 import { generateCPFHash, maskCPF, cleanCPF, isValidCPF } from '../utils/lgpdUtils';
-import { firestoreService, prepareEmployeeForFirestore, COLLECTIONS } from './firestoreService';
+import { dbService, prepareEmployeeForDb, COLLECTIONS } from './dbService';
 
 /**
  * Result of an employee sync operation
@@ -137,7 +137,7 @@ export async function syncEmployeeUpsert(
   constructionSites: ConstructionSite[]
 ): Promise<EmployeeSyncResult> {
   try {
-    await firestoreService.ensureAuthenticatedWriteSession();
+    await dbService.ensureAuthenticatedWriteSession();
     // 1. Validate and prepare data
     const matricula = (employeeData.matricula || employeeData.id || '').trim();
     const nome = (employeeData.nome || '').trim();
@@ -183,7 +183,7 @@ export async function syncEmployeeUpsert(
         canteiroId: canteiroId || existingEmployee.canteiroId,
         atualizadoEm: new Date().toISOString()
       };
-      const updatePayload = prepareEmployeeForFirestore(rawUpdatePayload);
+      const updatePayload = prepareEmployeeForDb(rawUpdatePayload);
 
       await updateDoc(
         doc(db, COLLECTIONS.COLABORADORES, existingEmployee.id),
@@ -217,7 +217,7 @@ export async function syncEmployeeUpsert(
         atualizadoEm: new Date().toISOString(),
         ...employeeData
       };
-      const createPayload = prepareEmployeeForFirestore(rawCreatePayload);
+      const createPayload = prepareEmployeeForDb(rawCreatePayload);
 
       await setDoc(
         doc(db, COLLECTIONS.COLABORADORES, newId),

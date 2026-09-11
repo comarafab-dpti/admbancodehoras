@@ -1,6 +1,6 @@
-import { collection, doc, getDocs, writeBatch, limit, query } from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
-import { COLLECTIONS, firestoreService, sanitizeFirestoreData } from './firestoreService';
+import { collection, doc, getDocs, writeBatch, limit, query } from './db';
+import { db, logDbError, OperationType } from './db';
+import { COLLECTIONS, dbService, sanitizeDbData } from './dbService';
 import { storageService } from './storageService';
 import { localCache } from './localCache';
 import { registrarLogAuditoria } from './auditService';
@@ -661,7 +661,7 @@ export const seedService = {
   async seedTrainingData(
     onProgress?: (info: SeedProgressInfo) => void
   ): Promise<SeedResult> {
-    await firestoreService.ensureAuthenticatedWriteSession();
+    await dbService.ensureAuthenticatedWriteSession();
 
     try {
       if (onProgress) {
@@ -687,7 +687,7 @@ export const seedService = {
       const canteirosBatch = writeBatch(db);
       TRAINING_CANTEIROS.forEach((site) => {
         const ref = doc(db, COLLECTIONS.CANTEIROS, site.id);
-        canteirosBatch.set(ref, sanitizeFirestoreData(site), { merge: true });
+        canteirosBatch.set(ref, sanitizeDbData(site), { merge: true });
       });
       await canteirosBatch.commit();
 
@@ -705,7 +705,7 @@ export const seedService = {
       TRAINING_EMPLOYEES.forEach((emp) => {
         const docId = emp.matricula.trim().toUpperCase();
         const ref = doc(db, COLLECTIONS.COLABORADORES, docId);
-        employeesBatch.set(ref, sanitizeFirestoreData(emp), { merge: true });
+        employeesBatch.set(ref, sanitizeDbData(emp), { merge: true });
       });
       await employeesBatch.commit();
 
@@ -722,7 +722,7 @@ export const seedService = {
       const recordsBatch = writeBatch(db);
       TRAINING_TIME_RECORDS.forEach((rec) => {
         const ref = doc(db, COLLECTIONS.LANCAMENTOS, rec.id);
-        recordsBatch.set(ref, sanitizeFirestoreData(rec), { merge: true });
+        recordsBatch.set(ref, sanitizeDbData(rec), { merge: true });
       });
       await recordsBatch.commit();
 
@@ -739,7 +739,7 @@ export const seedService = {
       const insalubrityBatch = writeBatch(db);
       TRAINING_INSALUBRITY_RECORDS.forEach((rec) => {
         const ref = doc(db, COLLECTIONS.INSALUBRIDADE, rec.id);
-        insalubrityBatch.set(ref, sanitizeFirestoreData(rec), { merge: true });
+        insalubrityBatch.set(ref, sanitizeDbData(rec), { merge: true });
       });
       await insalubrityBatch.commit();
 
@@ -756,7 +756,7 @@ export const seedService = {
       const dispensasBatch = writeBatch(db);
       TRAINING_DISPENSAS.forEach((disp) => {
         const ref = doc(db, COLLECTIONS.DISPENSAS_SPTF, disp.id);
-        dispensasBatch.set(ref, sanitizeFirestoreData(disp), { merge: true });
+        dispensasBatch.set(ref, sanitizeDbData(disp), { merge: true });
       });
       await dispensasBatch.commit();
 
@@ -773,7 +773,7 @@ export const seedService = {
       const paystubsBatch = writeBatch(db);
       TRAINING_PAYSTUBS.forEach((p) => {
         const ref = doc(db, COLLECTIONS.CONTRACHEQUES, p.id);
-        paystubsBatch.set(ref, sanitizeFirestoreData(p), { merge: true });
+        paystubsBatch.set(ref, sanitizeDbData(p), { merge: true });
       });
       await paystubsBatch.commit();
 
@@ -824,7 +824,7 @@ export const seedService = {
         message: 'Dados de treinamento e demonstração carregados com sucesso no Cloud Firestore.',
       };
     } catch (error: any) {
-      logFirestoreError(error, OperationType.WRITE, 'SEED_TRAINING_DATA');
+      logDbError(error, OperationType.WRITE, 'SEED_TRAINING_DATA');
       throw error;
     }
   },
@@ -836,7 +836,7 @@ export const seedService = {
   async clearAllOperationalData(
     onProgress?: (info: { message: string; percent: number }) => void
   ): Promise<ClearResult> {
-    await firestoreService.ensureAuthenticatedWriteSession();
+    await dbService.ensureAuthenticatedWriteSession();
 
     // Coleções operacionais a serem limpas
     const OPERATIONAL_COLLECTIONS = [
@@ -927,7 +927,7 @@ export const seedService = {
         message: `Base operacional zerada com sucesso (${totalDeleted} documentos excluídos). Sistema pronto para importação real.`,
       };
     } catch (error: any) {
-      logFirestoreError(error, OperationType.DELETE, 'CLEAR_OPERATIONAL_DATA');
+      logDbError(error, OperationType.DELETE, 'CLEAR_OPERATIONAL_DATA');
       throw error;
     }
   },

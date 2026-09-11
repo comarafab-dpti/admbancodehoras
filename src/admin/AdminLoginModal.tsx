@@ -17,7 +17,7 @@ interface AdminLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onGoogleSignIn: () => Promise<any>;
-  onDevAdminSignIn?: (email?: string) => Promise<any>;
+  onDevAdminSignIn?: (email?: string, password?: string) => Promise<any>;
   isDark: boolean;
 }
 
@@ -33,6 +33,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [copiedDomain, setCopiedDomain] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMasterEmail, setSelectedMasterEmail] = useState<string>('coari.comara@gmail.com');
+  const [masterPassword, setMasterPassword] = useState<string>('');
 
   if (!isOpen) return null;
 
@@ -96,13 +97,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   };
 
-  const handleDevMasterSubmit = async (emailToUse?: string) => {
+  const handleDevMasterSubmit = async (emailToUse?: string, passwordToUse?: string) => {
     const targetEmail = emailToUse || selectedMasterEmail;
+    const targetPassword = passwordToUse ?? masterPassword;
     setIsLoading(true);
     setErrorMessage(null);
     try {
       if (onDevAdminSignIn) {
-        const res = await onDevAdminSignIn(targetEmail);
+        const res = await onDevAdminSignIn(targetEmail, targetPassword);
         if (res?.success) {
           await authService.logAccess(
             targetEmail,
@@ -117,7 +119,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           setErrorMessage(res.error);
         }
       } else {
-        const { user, processed } = await authService.signInWithDevMaster(targetEmail);
+        const { user, processed } = await authService.signInWithDevMaster(targetEmail, targetPassword);
         if (processed.status === 'ativo') {
           authService.saveCurrentSession({
             email: processed.admin.email,
@@ -179,9 +181,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             <div className="flex items-start gap-2.5">
               <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <strong className="font-bold text-sm block">Domínio não autorizado no Firebase Auth</strong>
+                <strong className="font-bold text-sm block">URL de redirecionamento não autorizada no Supabase Auth</strong>
                 <p className="mt-1 leading-relaxed text-[11px] opacity-90">
-                  O Google OAuth requer que a URL deste ambiente esteja cadastrada na lista de domínios autorizados do seu projeto Firebase.
+                  O Google OAuth requer que a URL deste ambiente esteja cadastrada na configuração do seu projeto Supabase.
                 </p>
               </div>
             </div>
@@ -202,10 +204,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             </div>
 
             <div className="text-[11px] leading-relaxed space-y-1 opacity-90">
-              <p><strong>Como autorizar no Firebase Console:</strong></p>
-              <p>1. Acesse <strong>Firebase Console &gt; Authentication &gt; Settings</strong></p>
-              <p>2. Na aba <strong>Authorized domains</strong>, clique em <strong>Add domain</strong></p>
-              <p>3. Cole <code className="px-1 py-0.5 rounded bg-black/20 font-mono">{currentHostname}</code> e salve.</p>
+              <p><strong>Como autorizar no Supabase:</strong></p>
+              <p>1. Acesse <strong>Supabase Dashboard &gt; Authentication &gt; URL Configuration</strong></p>
+              <p>2. Em <strong>Redirect URLs</strong>, adicione <code className="px-1 py-0.5 rounded bg-black/20 font-mono">{currentHostname}/*</code></p>
+              <p>3. Salve e tente o acesso novamente.</p>
             </div>
           </div>
         )}
@@ -236,7 +238,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
             </svg>
-            <span>{isLoading ? 'Autenticando...' : 'Entrar com Google Workspace (Popup)'}</span>
+            <span>{isLoading ? 'Autenticando...' : 'Entrar com Google Workspace'}</span>
           </button>
 
           <button
@@ -248,10 +250,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 ? 'bg-[#16243D] hover:bg-[#243756] border-[#243756] text-blue-300' 
                 : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-800'
             } disabled:opacity-50`}
-            title="Utilize o redirecionamento caso o popup seja bloqueado pelo navegador ou políticas COOP"
+            title="Repete o login Google via redirecionamento de página (Supabase Auth)"
           >
             <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-            <span>Entrar via Redirecionamento (Evita bloqueio de popup/COOP)</span>
+            <span>Entrar via Redirecionamento</span>
           </button>
         </div>
 
@@ -302,6 +304,19 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 </option>
               ))}
             </select>
+
+            <input
+              type="password"
+              value={masterPassword}
+              onChange={(e) => setMasterPassword(e.target.value)}
+              placeholder="Senha do usuário mestre (Supabase Auth)"
+              autoComplete="current-password"
+              className={`w-full sm:w-44 py-2 px-3 rounded-xl text-xs font-semibold border outline-hidden transition-all ${
+                isDark 
+                  ? 'bg-[#16243D] border-[#335075] text-white focus:border-blue-500 placeholder:text-slate-500' 
+                  : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 placeholder:text-slate-400'
+              }`}
+            />
 
             <button
               type="button"

@@ -1,53 +1,46 @@
-import { doc, getDoc, setDoc, addDoc, collection, query, orderBy, limit, onSnapshot, Unsubscribe } from 'firebase/firestore';
-import { 
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  signInAnonymously,
-  User as FirebaseUser 
-} from 'firebase/auth';
-import { auth, googleProvider, db } from './firebase';
+import { doc, getDoc, setDoc, addDoc, collection, query, orderBy, limit, onSnapshot, Unsubscribe } from './db';
+import { supabase } from './supabase';
 import { EmployeeAuth, AccessLog, AccessLogType, AdminUser, AdminRole, AuthSession } from '../types';
 
-export function getFirebaseAuthErrorMessage(errorCode: string, defaultMessage?: string): string {
+export function getAuthErrorMessage(errorCode: string, defaultMessage?: string): string {
   switch (errorCode) {
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-    case 'auth/invalid-login-credentials':
-      return 'E-mail ou senha incorretos.';
-    case 'auth/user-disabled':
-      return 'Este usuário foi desativado no Firebase Authentication.';
-    case 'auth/too-many-requests':
+    case 'invalid_credentials':
+    case 'wrong_password':
+    case 'email_not_confirmed':
+      return 'E-mail ou senha incorretos, ou e-mail ainda não confirmado no Supabase Auth.';
+    case 'user_disabled':
+      return 'Este usuário foi desativado na autenticação.';
+    case 'over_request_rate_limit':
+    case 'too_many_requests':
       return 'Acesso temporariamente bloqueado devido a muitas tentativas inválidas. Tente novamente mais tarde.';
-    case 'auth/invalid-email':
+    case 'invalid_email':
       return 'Formato de e-mail inválido.';
-    case 'auth/operation-not-allowed':
-      return 'O provedor de autenticação (E-mail/Senha) não está habilitado no Firebase Console. Utilize o botão "Entrar com Google Workspace" ou habilite o provedor em Firebase Console > Authentication > Sign-in method.';
-    case 'auth/email-already-in-use':
-      return 'Este e-mail já está cadastrado no Firebase Authentication.';
-    case 'auth/weak-password':
-      return 'A senha é muito fraca. Utilize ao menos 6 caracteres.';
-    case 'auth/network-request-failed':
-      return 'Falha de conexão com os servidores do Firebase Auth. Verifique sua conexão com a internet.';
-    case 'auth/popup-closed-by-user':
-      return 'A janela de autenticação do Google foi fechada antes da conclusão.';
-    case 'auth/unauthorized-domain': {
-      const host = typeof window !== 'undefined' ? window.location.hostname : '';
-      return host 
-        ? `O domínio "${host}" não está na lista de domínios autorizados do Firebase Authentication. Adicione "${host}" em Firebase Console > Authentication > Settings > Authorized domains.`
-        : 'Domínio não autorizado no Firebase Authentication Console.';
+    case 'provider_disabled':
+      return 'O provedor de autenticação não está habilitado no Supabase (Authentication > Providers).';
+    case 'email_exists':
+      return 'Este e-mail já está cadastrado na autenticação.';
+    case 'network_request_failed':
+      return 'Falha de conexão com os servidores de autenticação. Verifique sua conexão com a internet.';
+    case 'popup_closed_by_user':
+      return 'A janela de autenticação foi fechada antes da conclusão.';
+    case 'unauthorized_domain': {
+      const host = typeof window !== 'undefined' ? window.location.origin : '';
+      return host
+        ? `A URL "${host}" não está na lista de Redirect URLs do Supabase Authentication. Adicione-a em Authentication > URL Configuration.`
+        : 'URL de redirecionamento não autorizada na configuração do Supabase Auth.';
     }
     default:
-      return defaultMessage || 'Falha na autenticação via Firebase Auth.';
+      return defaultMessage || 'Falha na autenticação.';
   }
 }
+
 
 const COLLECTIONS = {
   COLABORADORES_AUTH: 'colaboradores_auth',
   LOGS_ACESSO: 'logs_acesso',
   COLABORADORES: 'colaboradores',
   ADMIN_USERS: 'admin_users',
+  USUARIOS_SISTEMA: 'usuarios_sistema',
 };
 
 function sanitize<T extends Record<string, any>>(obj: T): Record<string, any> {
@@ -66,7 +59,7 @@ export async function hashPassword(password: string): Promise<string> {
   const data = encoder.encode(password.trim());
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Local cache keys
@@ -97,7 +90,7 @@ function getLocalLogs(): AccessLog[] {
     const raw = localStorage.getItem(LOCAL_LOGS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
-    return [];
+    return {};
   }
 }
 
@@ -124,7 +117,7 @@ export const DEFAULT_MASTER_ACCOUNTS = [
     nome: 'Super Administrador COMARA FAB',
     cargo: 'Super Administrador TI / RH',
     role: 'SUPER_ADMIN' as const,
-  }
+  },
 ];
 
 export function isMasterAdminEmail(email: string): boolean {
@@ -154,15 +147,24 @@ export interface ProcessAuthResult {
   message?: string;
 }
 
-export async function processAuthenticatedUser(firebaseUser: FirebaseUser): Promise<ProcessAuthResult> {
-  const email = (firebaseUser.email || '').trim().toLowerCase();
+/**
+ * Processa o usuário autenticado (sessão Supabase Auth) contra a matriz RBAC
+ * em admin_users — mesma lógica do legado, agora lendo do PostgreSQL.
+ */
+export async function processAuthenticatedUser(authUser: {
+  email?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  uid?: string | null;
+}): Promise<ProcessAuthResult> {
+  const email = (authUser.email || '').trim().toLowerCase();
   if (!email) {
     throw new Error('E-mail do usuário não identificado na sessão.');
   }
 
   const nowIso = new Date().toISOString();
   let adminDoc: AdminUser | null = null;
-  const docRef = doc(db, COLLECTIONS.ADMIN_USERS, email);
+  const docRef = doc(null as any, COLLECTIONS.ADMIN_USERS, email);
 
   try {
     const snap = await getDoc(docRef);
@@ -173,21 +175,22 @@ export async function processAuthenticatedUser(firebaseUser: FirebaseUser): Prom
     console.warn('[Auth] Erro ao consultar documento em admin_users:', err);
   }
 
-  // Se não existir, auto-cadastra. E-mail master cria o primeiro cadastro ativo como SUPER_ADMIN (bootstrap).
-  // Após criado, o perfil será lido EXCLUSIVAMENTE do documento do Firestore.
+  // Se não existir, auto-cadastra. E-mail master cria o primeiro cadastro ativo
+  // como SUPER_ADMIN (bootstrap). Após criado, o perfil será lido EXCLUSIVAMENTE
+  // do documento no banco.
   if (!adminDoc) {
     const isMasterBootstrap = isMasterAdminEmail(email);
     const newDoc: AdminUser = {
       id: email,
       email,
-      nome: firebaseUser.displayName || (isMasterBootstrap ? 'Super Administrador COMARA' : (email.split('@')[0] || 'Sem nome')),
+      nome: authUser.displayName || (isMasterBootstrap ? 'Super Administrador COMARA' : (email.split('@')[0] || 'Sem nome')),
       cargo: isMasterBootstrap ? 'Super Administrador TI / RH' : 'Aguardando aprovação',
       funcao: isMasterBootstrap ? 'Super Administrador TI / RH' : '',
       role: (isMasterBootstrap ? 'SUPER_ADMIN' : 'NENHUM') as AdminRole,
       nivelAcesso: (isMasterBootstrap ? 'SUPER_ADMIN' : 'NENHUM') as AdminRole,
       status: isMasterBootstrap ? 'ativo' : 'pendente',
       perfil: isMasterBootstrap ? 'super_admin' : 'nenhum',
-      foto: firebaseUser.photoURL || null,
+      foto: authUser.photoURL || null,
       sede: 'TODAS',
       canteiroSede: 'TODAS',
       ativo: isMasterBootstrap,
@@ -199,7 +202,7 @@ export async function processAuthenticatedUser(firebaseUser: FirebaseUser): Prom
       await setDoc(docRef, sanitize(newDoc), { merge: true });
       adminDoc = newDoc;
     } catch (saveErr) {
-      console.warn('[Auth] Erro ao salvar auto-cadastro inicial no Firestore:', saveErr);
+      console.warn('[Auth] Erro ao salvar auto-cadastro inicial no banco:', saveErr);
       adminDoc = newDoc;
     }
   }
@@ -215,9 +218,9 @@ export async function processAuthenticatedUser(firebaseUser: FirebaseUser): Prom
   }
 
   const isAtivo = (
-    adminDoc.status === 'ativo' && 
+    adminDoc.status === 'ativo' &&
     adminDoc.ativo &&
-    adminDoc.role !== 'NENHUM' && 
+    adminDoc.role !== 'NENHUM' &&
     adminDoc.perfil !== 'nenhum'
   );
 
@@ -225,8 +228,8 @@ export async function processAuthenticatedUser(firebaseUser: FirebaseUser): Prom
     status: isAtivo ? 'ativo' : 'pendente',
     admin: adminDoc,
     isSuperAdmin: adminDoc.role === 'SUPER_ADMIN' || adminDoc.nivelAcesso === 'SUPER_ADMIN',
-    message: isAtivo 
-      ? `Bem-vindo(a), ${adminDoc.nome}!` 
+    message: isAtivo
+      ? `Bem-vindo(a), ${adminDoc.nome}!`
       : 'Sua conta foi registrada e aguarda liberação do administrador.'
   };
 }
@@ -245,7 +248,7 @@ export const authService = {
   ): Promise<void> {
     const now = new Date().toISOString();
     const logItem: AccessLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       timestamp: now,
       matricula: matricula.toUpperCase(),
       nome,
@@ -258,9 +261,9 @@ export const authService = {
     // Save locally
     saveLocalLog(logItem);
 
-    // Save to Firestore
+    // Save to Supabase
     try {
-      await addDoc(collection(db, COLLECTIONS.LOGS_ACESSO), logItem);
+      await addDoc(collection(null as any, COLLECTIONS.LOGS_ACESSO), sanitize(logItem));
     } catch (err) {
       console.warn('Registro de log offline/local:', err);
     }
@@ -272,18 +275,18 @@ export const authService = {
   ): Unsubscribe {
     try {
       const q = query(
-        collection(db, COLLECTIONS.LOGS_ACESSO),
+        collection(null as any, COLLECTIONS.LOGS_ACESSO),
         orderBy('timestamp', 'desc'),
         limit(150)
       );
       return onSnapshot(
         q,
-        (snapshot) => {
+        (snapshot: any) => {
           const list: AccessLog[] = [];
-          snapshot.forEach((d) => list.push(d.data() as AccessLog));
+          snapshot.forEach((d: any) => list.push(d.data() as AccessLog));
           onSuccess(list.length > 0 ? list : getLocalLogs());
         },
-        (error) => {
+        (error: Error) => {
           if (onError) onError(error);
           onSuccess(getLocalLogs());
         }
@@ -325,19 +328,19 @@ export const authService = {
       passwordHash,
       senhaDefinida: true,
       atualizadoEm: nowIso,
-    });
+    } as EmployeeAuth);
 
     try {
       await Promise.all([
-        setDoc(doc(db, COLLECTIONS.COLABORADORES_AUTH, cleanMatricula), authDataToSave, { merge: true }),
-        setDoc(doc(db, COLLECTIONS.COLABORADORES, cleanMatricula), {
+        setDoc(doc(null as any, COLLECTIONS.COLABORADORES_AUTH, cleanMatricula), authDataToSave, { merge: true }),
+        setDoc(doc(null as any, COLLECTIONS.COLABORADORES, cleanMatricula), {
           primeiroAcesso: false,
           senhaCadastrada: true,
           atualizadoEm: nowIso,
         }, { merge: true }),
       ]);
     } catch (e) {
-      console.error('Erro ao atualizar senha no Firestore:', e);
+      console.error('Erro ao atualizar senha no banco:', e);
     }
 
     await this.logAccess(
@@ -352,7 +355,7 @@ export const authService = {
   },
 
   // -------------------------------------------------------------
-  // GERENCIAMENTO DE SESSÃO TEMPORÁRIA (SESSION-ONLY / NÃO-PERSISTENTE)
+  // GERENCIAMENTO DE SESSÃO TEMPORÁRIA
   // -------------------------------------------------------------
   saveCurrentSession(session: AuthSession): void {
     try {
@@ -382,18 +385,9 @@ export const authService = {
   },
 
   // -------------------------------------------------------------
-  // AUTENTICAÇÃO ADMINISTRATIVA — APENAS GOOGLE WORKSPACE
-  // -------------------------------------------------------------
-  // O login administrativo é exclusivamente via Google Workspace (signInWithGoogle).
-  // A regra das 48h da passagem de bastão permanece em checkAndRevokeExpiredTransitions.
-
-  // -------------------------------------------------------------
   // REGRA DAS 48 HORAS: PASSAGEM DE BASTÃO DE LIDERANÇA
   // -------------------------------------------------------------
-  
-  /**
-   * Agenda a desativação do encarregado/chefe anterior para daqui a 48 horas
-   */
+
   async scheduleRoleTransitionHandover(
     previousEmail: string,
     newResponsibleName: string,
@@ -414,8 +408,8 @@ export const authService = {
       };
 
       await Promise.all([
-        setDoc(doc(db, COLLECTIONS.ADMIN_USERS, cleanEmail), updateData, { merge: true }),
-        setDoc(doc(db, 'usuarios_sistema', cleanEmail), updateData, { merge: true })
+        setDoc(doc(null as any, COLLECTIONS.ADMIN_USERS, cleanEmail), updateData, { merge: true }),
+        setDoc(doc(null as any, COLLECTIONS.USUARIOS_SISTEMA, cleanEmail), updateData, { merge: true }),
       ]);
 
       await this.logAccess(
@@ -430,9 +424,6 @@ export const authService = {
     }
   },
 
-  /**
-   * Varredura periódica para revogar permissões administrativas expiradas pós 48h
-   */
   async checkAndRevokeExpiredTransitions(adminUsers: AdminUser[]): Promise<AdminUser[]> {
     const now = Date.now();
     const updatedUsers: AdminUser[] = [];
@@ -445,16 +436,16 @@ export const authService = {
           try {
             const nowIso = new Date().toISOString();
             await Promise.all([
-              setDoc(doc(db, COLLECTIONS.ADMIN_USERS, cleanEmail), {
+              setDoc(doc(null as any, COLLECTIONS.ADMIN_USERS, cleanEmail), {
                 ativo: false,
                 transicaoStatus: 'EXPIRADO',
                 atualizadoEm: nowIso,
               }, { merge: true }),
-              setDoc(doc(db, 'usuarios_sistema', cleanEmail), {
+              setDoc(doc(null as any, COLLECTIONS.USUARIOS_SISTEMA, cleanEmail), {
                 ativo: false,
                 transicaoStatus: 'EXPIRADO',
                 atualizadoEm: nowIso,
-              }, { merge: true })
+              }, { merge: true }),
             ]);
             updatedUsers.push({ ...user, ativo: false, transicaoStatus: 'EXPIRADO' });
           } catch (err) {
@@ -472,76 +463,81 @@ export const authService = {
     return updatedUsers;
   },
 
+  // -------------------------------------------------------------
+  // AUTENTICAÇÃO ADMINISTRATIVA — GOOGLE WORKSPACE (SUPABASE AUTH)
+  // -------------------------------------------------------------
+
   /**
-   * Inicia o fluxo oficial de login Google Workspace via Popup do Firebase Auth.
-   * Se o domínio atual não estiver cadastrado no Firebase Console (auth/unauthorized-domain),
-   * ativa automaticamente o modo de contingência institucional para contas Master pré-autorizadas.
+   * Login Google Workspace via Supabase Auth (OAuth por redirecionamento).
+   * A página navega para o Google; ao retornar, a sessão é detectada
+   * automaticamente (detectSessionInUrl) e processada pelo listener
+   * onAuthStateChanged da aplicação.
    */
-  async signInWithGoogle(): Promise<{ user: FirebaseUser | any; processed: ProcessAuthResult }> {
-    try {
-      const userCredential = await signInWithPopup(auth, googleProvider);
-      const processed = await processAuthenticatedUser(userCredential.user);
-      return { user: userCredential.user, processed };
-    } catch (error: any) {
-      const code = error?.code || '';
-      const msg = error?.message || '';
-      if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
-        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-        console.warn(
-          `[Auth] O domínio atual ("${currentHost}") não está na lista de domínios autorizados do Firebase Console. ` +
-          `Ativando autenticação de contingência automática para a conta master institucional (${DEFAULT_MASTER_ACCOUNTS[0].email})...`
-        );
-        return await this.signInWithDevMaster(DEFAULT_MASTER_ACCOUNTS[0].email);
-      }
+  async signInWithGoogle(): Promise<{ user: any | null; processed: ProcessAuthResult | null; redirected?: boolean }> {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/admin`,
+      },
+    });
+    if (error) {
       throw error;
     }
+    return { user: null, processed: null, redirected: true };
   },
 
   /**
-   * Inicia o fluxo de login Google Workspace via Redirecionamento de Página.
-   * Bypassa completamente bloqueadores de popups e restrições de Cross-Origin-Opener-Policy (COOP).
+   * Login Google via redirecionamento explícito (mesma rota do Supabase Auth).
    */
   async signInWithGoogleRedirect(): Promise<void> {
-    await signInWithRedirect(auth, googleProvider);
+    await this.signInWithGoogle();
   },
 
   /**
-   * Acesso de desenvolvimento / homologação para contas Master autorizadas
-   * Utilizado para contingência quando o domínio não estiver previamente registrado no Firebase Auth
+   * Acesso de contingência/homologação para contas Master.
+   * Agora requer um usuário real (e-mail/senha) no Supabase Auth para que
+   * as políticas RLS se apliquem corretamente à sessão.
+   * Crie o usuário em Authentication > Users (e-mail/senha, auto-confirmado).
    */
-  async signInWithDevMaster(email: string = 'coari.comara@gmail.com'): Promise<{ user: any; processed: ProcessAuthResult }> {
+  async signInWithDevMaster(email: string = 'coari.comara@gmail.com', password?: string): Promise<{ user: any; processed: ProcessAuthResult }> {
     const cleanEmail = email.trim().toLowerCase();
-    let fbUser: any = auth.currentUser;
-    if (!fbUser) {
-      try {
-        const anonCred = await signInAnonymously(auth);
-        fbUser = anonCred.user;
-      } catch (anonErr) {
-        console.warn('[Auth] Autenticação anônima não disponível no momento:', anonErr);
-      }
+
+    if (!password) {
+      throw new Error('Informe a senha da conta mestre (usuário e-mail/senha do Supabase Auth).');
     }
 
-    const mockUser = {
-      uid: fbUser?.uid || `dev-${cleanEmail}`,
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: cleanEmail,
-      displayName: cleanEmail === 'coari.comara@gmail.com' 
-        ? 'Coari Comara (Administrador Geral)'
-        : (cleanEmail === 'comarafab@gmail.com' ? 'Super Administrador COMARA FAB' : cleanEmail.split('@')[0]),
-      photoURL: null,
+      password,
+    });
+
+    if (error || !data?.user) {
+      const msg = error?.code
+        ? getAuthErrorMessage(error.code, error.message)
+        : 'Falha no acesso de contingência. Verifique se o usuário existe em Authentication > Users.';
+      throw new Error(msg);
+    }
+
+    const sessionUser = {
+      uid: data.user.id,
+      email: data.user.email ?? cleanEmail,
+      displayName:
+        cleanEmail === 'coari.comara@gmail.com'
+          ? 'Coari Comara (Administrador Geral)'
+          : cleanEmail === 'comarafab@gmail.com'
+            ? 'Super Administrador COMARA FAB'
+            : data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+      photoURL: data.user.user_metadata?.avatar_url ?? null,
     };
-    const processed = await processAuthenticatedUser(mockUser as any);
-    return { user: mockUser, processed };
+    const processed = await processAuthenticatedUser(sessionUser);
+    return { user: sessionUser, processed };
   },
 
   /**
-   * Processa e obtém o resultado de redirecionamento residual (se houver)
+   * Legado: o retorno do OAuth é processado automaticamente pelo listener
+   * de sessão do Supabase Auth.
    */
-  async getRedirectResult(): Promise<FirebaseUser | null> {
-    try {
-      const userCredential = await getRedirectResult(auth);
-      return userCredential ? userCredential.user : null;
-    } catch {
-      return null;
-    }
-  }
+  async getRedirectResult(): Promise<null> {
+    return null;
+  },
 };

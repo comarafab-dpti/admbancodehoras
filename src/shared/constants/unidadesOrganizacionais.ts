@@ -182,8 +182,8 @@ export function listarSetoresDaUnidade(codigoUo: string): UnidadeOrganizacional[
 export async function carregarUnidadesOrganizacionais(): Promise<void> {
   if (!unidadesOrganizacionaisLoad) {
     unidadesOrganizacionaisLoad = (async () => {
-      const { collection, getDocs } = await import('firebase/firestore');
-      const { db } = await import('../services/firebase');
+      const { collection, getDocs } = await import('../services/db');
+      const { db } = await import('../services/db');
       const snapshot = await getDocs(collection(db, UNIDADES_ORGANIZACIONAIS_COLLECTION));
       snapshot.forEach((item) => {
         const data = item.data() as Partial<UnidadeOrganizacional>;

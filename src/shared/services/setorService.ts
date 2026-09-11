@@ -6,8 +6,8 @@ import {
   deleteDoc,
   onSnapshot,
   Unsubscribe
-} from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
+} from './db';
+import { db, logDbError, OperationType } from './db';
 import { UnidadeOrganizacional, Employee } from '../types';
 import {
   UNIDADES_ORGANIZACIONAIS,
@@ -80,7 +80,7 @@ export const setorService = {
           onUpdate(setores, todas);
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, UNIDADES_ORGANIZACIONAIS_COLLECTION);
+          logDbError(error, OperationType.LIST, UNIDADES_ORGANIZACIONAIS_COLLECTION);
           if (onError) onError(error);
 
           // Fallback gracioso para dados locais em memória/cache
@@ -149,7 +149,7 @@ export const setorService = {
       const docRef = doc(db, UNIDADES_ORGANIZACIONAIS_COLLECTION, codigoLimpo);
       await setDoc(docRef, dadosFinais, { merge: true });
     } catch (e) {
-      logFirestoreError(e, OperationType.WRITE, `${UNIDADES_ORGANIZACIONAIS_COLLECTION}/${codigoLimpo}`);
+      logDbError(e, OperationType.WRITE, `${UNIDADES_ORGANIZACIONAIS_COLLECTION}/${codigoLimpo}`);
       console.warn('Erro ao salvar setor no Firestore, mantendo em memória e cache local:', e);
     }
 
@@ -171,7 +171,7 @@ export const setorService = {
       const docRef = doc(db, UNIDADES_ORGANIZACIONAIS_COLLECTION, codigoLimpo);
       await deleteDoc(docRef);
     } catch (e) {
-      logFirestoreError(e, OperationType.DELETE, `${UNIDADES_ORGANIZACIONAIS_COLLECTION}/${codigoLimpo}`);
+      logDbError(e, OperationType.DELETE, `${UNIDADES_ORGANIZACIONAIS_COLLECTION}/${codigoLimpo}`);
       console.warn('Erro ao excluir setor no Firestore, removendo de memória local:', e);
     }
 

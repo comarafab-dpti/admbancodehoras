@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useId } from 'react';
 import { Employee, TimeRecord, OccurrenceType, Branch } from '@/src/shared/types';
 import { calculateSPTFBalance, formatHoursDecimal } from '@/src/shared/utils/calculations';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { storageService } from '@/src/shared/services/storageService';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
 import { 
@@ -263,7 +263,7 @@ export const QuickBatchEntryModal: React.FC<QuickBatchEntryModalProps> = ({
         await onSaveBatch(recordsToSave);
       } else {
         // Fallback direto com Firestore e Storage
-        await firestoreService.importTimeRecordsBatch(recordsToSave);
+        await dbService.importTimeRecordsBatch(recordsToSave);
         storageService.addTimeRecordsBatch(recordsToSave);
       }
 

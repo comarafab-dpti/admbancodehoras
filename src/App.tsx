@@ -1,18 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Employee, TimeRecord, Attachment, AdminUser, AdminRole, AuthSession, InsalubrityRecord, SystemConfig, GrauInsalubridade, ConstructionSite, PaystubRecord, DispensaSptfRecord } from './shared/types';
 import { storageService } from './shared/services/storageService';
-import { firestoreService, BatchProgressInfo } from './shared/services/firestoreService';
+import { dbService, BatchProgressInfo } from './shared/services/dbService';
 import { seedService } from './shared/services/seedService';
-import { auth, googleProvider, testFirestoreConnection, isPermissionError, isQuotaError } from './shared/services/firebase';
-import { authService, getFirebaseAuthErrorMessage } from './shared/services/authService';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  signOut as firebaseSignOut, 
-  User as FirebaseUser 
-} from 'firebase/auth';
+import { auth, onAuthStateChanged, getRedirectResult, firebaseSignOut, FirebaseUser, isPermissionError, isQuotaError, testConnection } from './shared/services/db';
+import { authService, getAuthErrorMessage } from './shared/services/authService';
 
 import { Navbar, ActiveTab, UserMode } from './admin/Navbar';
 import { LookerDashboard } from './admin/LookerDashboard';
@@ -348,12 +340,12 @@ export default function App() {
       canteiros: true,
       configuracao: true,
     }));
-    testFirestoreConnection();
+    testConnection();
 
     const unsubs: Array<() => void> = [];
 
     // Subscribe to Employees in Firestore (sempre ativo: gestão)
-    unsubs.push(firestoreService.subscribeEmployees(
+    unsubs.push(dbService.subscribeEmployees(
       (emps) => {
         setEmployees(emps);
         setFirestoreErrorNotice(null);
@@ -382,7 +374,7 @@ export default function App() {
     ));
 
     // Subscribe to Time Records in Firestore (sempre ativo: gestão)
-    unsubs.push(firestoreService.subscribeTimeRecords(
+    unsubs.push(dbService.subscribeTimeRecords(
       (recs) => {
         setRecords(recs);
         setFirestoreErrorNotice(null);
@@ -406,7 +398,7 @@ export default function App() {
     ));
 
     // Subscribe to Insalubrity Records in Firestore (sempre ativo: gestão)
-    unsubs.push(firestoreService.subscribeInsalubrityRecords(
+    unsubs.push(dbService.subscribeInsalubrityRecords(
       (items) => {
         setInsalubrityRecords(items);
         if (items.length > 0) {
@@ -425,7 +417,7 @@ export default function App() {
     ));
 
     // Subscribe to Paystubs (Contracheques Digitais) in Firestore (sempre ativo: gestão)
-    unsubs.push(firestoreService.subscribePaystubs(
+    unsubs.push(dbService.subscribePaystubs(
       (items) => {
         setPaystubs(items);
         if (items.length > 0) {
@@ -450,7 +442,7 @@ export default function App() {
       // admin_users: leitura restrita por Rules (apenas perfis globais
       // conseguem listar a coleção inteira; falhas são silenciosas)
       if (isGlobalUser) {
-        unsubs.push(firestoreService.subscribeAdmins(
+        unsubs.push(dbService.subscribeAdmins(
           (admins) => {
             const cleaned = admins.filter(a => a.email && !a.email.includes('@empresa.com.br') && a.email !== 'admin@comara.mil.br');
             setAdminUsers(cleaned);
@@ -467,7 +459,7 @@ export default function App() {
       }
 
       // Subscribe to Dispensas de SPTF in Firestore
-      unsubs.push(firestoreService.subscribeDispensasSptf(
+      unsubs.push(dbService.subscribeDispensasSptf(
         (items) => {
           setDispensasSptf(items);
           if (items.length > 0) {
@@ -486,7 +478,7 @@ export default function App() {
       ));
 
       // Canteiros de obras em tempo real (onSnapshot — sem cache com TTL)
-      unsubs.push(firestoreService.subscribeConstructionSites(
+      unsubs.push(dbService.subscribeConstructionSites(
         (sites) => {
           setConstructionSites(sites);
           markCollectionLoaded('canteiros');
@@ -498,7 +490,7 @@ export default function App() {
       ));
 
       // Configuração do sistema em tempo real (onSnapshot — sem cache com TTL)
-      unsubs.push(firestoreService.subscribeSystemConfig(
+      unsubs.push(dbService.subscribeSystemConfig(
         (cfg) => {
           setSystemConfig(cfg);
           storageService.saveSystemConfig(cfg);
@@ -865,20 +857,22 @@ export default function App() {
   const handleGoogleSignIn = async () => {
     try {
       setIsVerifyingPermissions(true);
-      const { user, processed } = await authService.signInWithGoogle();
+      const { user, processed, redirected } = await authService.signInWithGoogle();
+      // Supabase Auth usa redirecionamento: a página navega para o Google e a
+      // sessão é processada pelo listener onAuthStateChanged ao retornar.
+      if (redirected || !user || !processed) {
+        return { success: true, redirected: true };
+      }
       return applyUserAuth(user, processed);
     } catch (err: any) {
       const code = err?.code || '';
       let errorMsg = err?.message || 'Falha ao autenticar com Google Workspace.';
       if (code === 'auth/popup-closed-by-user') {
         errorMsg = 'A janela de login do Google foi fechada antes de concluir.';
-      } else if (code === 'auth/unauthorized-domain') {
-        const host = typeof window !== 'undefined' ? window.location.hostname : '';
-        errorMsg = `Domínio não autorizado no Firebase Auth (${host}). Você pode adicionar o domínio no Firebase Console ou usar o Acesso de Contingência.`;
       } else {
-        errorMsg = getFirebaseAuthErrorMessage(code, errorMsg);
+        errorMsg = getAuthErrorMessage(code, errorMsg);
       }
-      console.warn('Aviso na autenticação Google Popup:', err);
+      console.warn('Aviso na autenticação Google OAuth:', err);
       showToast(errorMsg, 'error');
       return { success: false, error: errorMsg, code };
     } finally {
@@ -887,10 +881,10 @@ export default function App() {
   };
 
   // Auth Handler: Acesso de Contingência / Homologação para Contas Master
-  const handleDevAdminSignIn = async (email: string = 'coari.comara@gmail.com') => {
+  const handleDevAdminSignIn = async (email: string = 'coari.comara@gmail.com', password?: string) => {
     try {
       setIsVerifyingPermissions(true);
-      const { user, processed } = await authService.signInWithDevMaster(email);
+      const { user, processed } = await authService.signInWithDevMaster(email, password);
       return applyUserAuth(user, processed);
     } catch (err: any) {
       console.warn('Aviso no acesso de desenvolvimento:', err);
@@ -984,7 +978,7 @@ export default function App() {
     const competencia = (newRecord.dataRegistro || '').slice(0, 7) || currentCompetencia;
     if (!podeGravarNoPeriodo(canteiroId, competencia, isEdit ? 'editar lançamento' : 'salvar lançamento')) return;
     try {
-      await firestoreService.saveTimeRecord(newRecord, currentUser?.email || 'admin@rh.cloud');
+      await dbService.saveTimeRecord(newRecord, currentUser?.email || 'admin@rh.cloud');
       showToast(`Lançamento de ${newRecord.horasBrutas}h gravado no Cloud Firestore com sucesso!`, 'success');
 
       // Audit Trail
@@ -1033,7 +1027,7 @@ export default function App() {
     });
 
     try {
-      const res = await firestoreService.importTimeRecordsBatch(
+      const res = await dbService.importTimeRecordsBatch(
         importedRecords,
         (progress: BatchProgressInfo) => {
           setBatchProgress({
@@ -1094,7 +1088,7 @@ export default function App() {
     });
 
     try {
-      const res = await firestoreService.importEmployeesBatch(
+      const res = await dbService.importEmployeesBatch(
         newEmployees,
         (progress: BatchProgressInfo) => {
           setBatchProgress({
@@ -1237,17 +1231,17 @@ export default function App() {
   const handleRestoreSnapshot = async (snapshot: any) => {
     try {
       if (snapshot.data?.employees) {
-        await firestoreService.importEmployeesBatch(snapshot.data.employees);
+        await dbService.importEmployeesBatch(snapshot.data.employees);
         storageService.saveEmployees(snapshot.data.employees);
         setEmployees(snapshot.data.employees);
       }
       if (snapshot.data?.records) {
-        await firestoreService.importTimeRecordsBatch(snapshot.data.records);
+        await dbService.importTimeRecordsBatch(snapshot.data.records);
         storageService.saveTimeRecords(snapshot.data.records);
         setRecords(snapshot.data.records);
       }
       if (snapshot.data?.insalubrityRecords) {
-        await firestoreService.saveInsalubrityBatch(snapshot.data.insalubrityRecords);
+        await dbService.saveInsalubrityBatch(snapshot.data.insalubrityRecords);
         for (const r of snapshot.data.insalubrityRecords) {
           storageService.saveInsalubrityRecord(r);
         }
@@ -1300,7 +1294,7 @@ export default function App() {
     const recordComp = (targetRec?.dataRegistro || targetRec?.data_ocorrencia || '').slice(0, 7);
     if (!podeGravarNoPeriodo(targetRec?.employeeSede || activeCanteiro || 'KO', recordComp || currentCompetencia, 'excluir lançamento')) return;
     try {
-      await firestoreService.deleteTimeRecord(id);
+      await dbService.deleteTimeRecord(id);
       storageService.deleteTimeRecord(id);
       setRecords(prev => prev.filter(r => r.id !== id));
       showToast('Lançamento excluído com sucesso do Cloud Firestore!', 'success');
@@ -1338,7 +1332,7 @@ export default function App() {
   const handleSaveDispensaSptf = async (dispensa: DispensaSptfRecord, lancamentoRecord: TimeRecord) => {
     if (!podeGravarNoPeriodo(dispensa.secaoCanteiro || lancamentoRecord.employeeSede || activeCanteiro || 'KO', currentCompetencia, 'salvar dispensa')) return;
     try {
-      await firestoreService.emitDispensaSptf(dispensa, lancamentoRecord);
+      await dbService.emitDispensaSptf(dispensa, lancamentoRecord);
       storageService.addDispensaSptf(dispensa);
       storageService.addTimeRecord(lancamentoRecord);
       showToast(`Guia de Dispensa de SPTF #${dispensa.numeroGuia} emitida e debitada no Banco de Horas com sucesso!`, 'success');
@@ -1385,7 +1379,7 @@ export default function App() {
     const targetDispensa = dispensasSptf.find(d => d.id === dispensaId);
     if (!podeGravarNoPeriodo(targetDispensa?.secaoCanteiro || activeCanteiro || 'KO', currentCompetencia, 'excluir dispensa')) return;
     try {
-      await firestoreService.deleteDispensaSptf(dispensaId, lancamentoId);
+      await dbService.deleteDispensaSptf(dispensaId, lancamentoId);
       storageService.deleteDispensaSptf(dispensaId);
       if (lancamentoId) {
         storageService.deleteTimeRecord(lancamentoId);
@@ -1454,7 +1448,7 @@ export default function App() {
     });
 
     try {
-      await firestoreService.saveInsalubrityRecord(record);
+      await dbService.saveInsalubrityRecord(record);
       showToast('Registro de insalubridade gravado com sucesso no Cloud Firestore!');
     } catch (err: any) {
       console.error('Erro ao salvar registro de insalubridade no Firestore:', err);
@@ -1479,7 +1473,7 @@ export default function App() {
     });
 
     try {
-      await firestoreService.saveInsalubrityBatch(recordsToSave);
+      await dbService.saveInsalubrityBatch(recordsToSave);
       showToast(`${recordsToSave.length} lançamentos de insalubridade salvos com sucesso!`, 'success');
     } catch (err: any) {
       console.error('Erro ao salvar lote de insalubridade no Firestore:', err);
@@ -1495,7 +1489,7 @@ export default function App() {
     });
 
     try {
-      await firestoreService.deleteInsalubrityRecord(id);
+      await dbService.deleteInsalubrityRecord(id);
       showToast('Registro de insalubridade removido.');
     } catch (err: any) {
       console.error('Erro ao deletar registro de insalubridade:', err);
@@ -1510,7 +1504,7 @@ export default function App() {
         ? rbacService.getUserCanteiroId(currentUser)
         : undefined;
 
-      const records = await firestoreService.fetchInsalubrityRecordsByPeriod({
+      const records = await dbService.fetchInsalubrityRecordsByPeriod({
         startDate,
         endDate,
         canteiroId: activeCanteiro,
@@ -1539,7 +1533,7 @@ export default function App() {
     if (!emp) return;
     const updated = { ...emp, grauInsalubridadeFixa: grau };
     try {
-      await firestoreService.saveEmployee(updated);
+      await dbService.saveEmployee(updated);
       const newEmps = employees.map(e => (e.id === empId || e.matricula === empId) ? updated : e);
       setEmployees(newEmps);
       storageService.saveEmployees(newEmps);
@@ -1555,7 +1549,7 @@ export default function App() {
 
   const handleSaveSystemConfig = async (cfg: SystemConfig) => {
     try {
-      await firestoreService.saveSystemConfig(cfg);
+      await dbService.saveSystemConfig(cfg);
       setSystemConfig(cfg);
       storageService.saveSystemConfig(cfg);
       showToast('Identidade visual COMARA atualizada com sucesso!');
@@ -1574,7 +1568,7 @@ export default function App() {
     const rawChefeDa = site.chefeDa || '';
     const rawAuxDa = site.auxDa || '';
     try {
-      await firestoreService.saveConstructionSite(site);
+      await dbService.saveConstructionSite(site);
       const id = site.id || `canteiro-${String(rawCode).toLowerCase()}`;
       const updatedSite = {
         id,
@@ -1640,7 +1634,7 @@ export default function App() {
   const handleDeleteConstructionSite = async (id: string) => {
     const targetSite = constructionSites.find(s => s.id === id);
     try {
-      await firestoreService.deleteConstructionSite(id);
+      await dbService.deleteConstructionSite(id);
       setConstructionSites((prev) => prev.filter((site) => site.id !== id));
       showToast('Canteiro de obras removido com sucesso.');
 
@@ -1673,7 +1667,7 @@ export default function App() {
         title: 'Importando Contracheques Digitais COMARA'
       });
 
-      await firestoreService.saveBatchPaystubs(newPaystubs, (prog) => {
+      await dbService.saveBatchPaystubs(newPaystubs, (prog) => {
         setBatchProgress({
           isOpen: true,
           processed: prog.processed,
@@ -1710,7 +1704,7 @@ export default function App() {
 
   const handleDeletePaystub = async (id: string) => {
     try {
-      await firestoreService.deletePaystub(id);
+      await dbService.deletePaystub(id);
       showToast('Contracheque excluído com sucesso.');
     } catch (err: any) {
       console.error('Erro ao deletar contracheque:', err);

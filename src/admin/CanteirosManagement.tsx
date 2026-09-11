@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ConstructionSite, Employee, InsalubrityRecord, Branch, GrauInsalubridade } from '@/src/shared/types';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
 import { canteiroService } from '@/src/shared/services/canteiroService';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { SetoresManagementTab } from './SetoresManagementTab';
 import { setorService } from '@/src/shared/services/setorService';
 import { 
@@ -104,7 +104,7 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
       (err) => {
         if (!isMounted) return;
         console.warn('Fallback para getConstructionSites em CanteirosManagement:', err);
-        firestoreService.getConstructionSites()
+        dbService.getConstructionSites()
           .then((cached) => {
             if (isMounted) {
               setSites(cached && cached.length > 0 ? cached : (constructionSites || []));

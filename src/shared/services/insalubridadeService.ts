@@ -9,10 +9,10 @@ import {
   query, 
   orderBy,
   Unsubscribe 
-} from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
+} from './db';
+import { db, logDbError, OperationType } from './db';
 import { InsalubrityRecord } from '../types';
-import { firestoreService, sanitizeFirestoreData } from './firestoreService';
+import { dbService, sanitizeDbData } from './dbService';
 
 export const INSALUBRIDADE_COLLECTION = 'insalubridade_records';
 
@@ -29,7 +29,7 @@ export const insalubridadeService = {
       endDate?: string;
     }
   ): Unsubscribe {
-    return firestoreService.subscribeInsalubrityRecords(onSuccess, onError, options);
+    return dbService.subscribeInsalubrityRecords(onSuccess, onError, options);
   },
 
   /**
@@ -41,7 +41,7 @@ export const insalubridadeService = {
     canteiroId?: string;
     forceRefresh?: boolean;
   }): Promise<InsalubrityRecord[]> {
-    return firestoreService.fetchInsalubrityRecordsByPeriod(params);
+    return dbService.fetchInsalubrityRecordsByPeriod(params);
   },
 
   /**
@@ -53,7 +53,7 @@ export const insalubridadeService = {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const eDate = endDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     
-    return firestoreService.fetchInsalubrityRecordsByPeriod({
+    return dbService.fetchInsalubrityRecordsByPeriod({
       startDate: sDate,
       endDate: eDate,
       canteiroId,
@@ -68,8 +68,8 @@ export const insalubridadeService = {
     const docId = record.id || `insalubre-${cleanMat}-${record.dataEvento}`;
     const path = `${INSALUBRIDADE_COLLECTION}/${docId}`;
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
-      const dataToSave = sanitizeFirestoreData({
+      await dbService.ensureAuthenticatedWriteSession();
+      const dataToSave = sanitizeDbData({
         id: docId,
         matricula: cleanMat,
         nomeColaborador: record.nomeColaborador.trim(),
@@ -87,7 +87,7 @@ export const insalubridadeService = {
       });
       await setDoc(doc(db, INSALUBRIDADE_COLLECTION, docId), dataToSave, { merge: true });
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -97,7 +97,7 @@ export const insalubridadeService = {
    */
   async saveInsalubrityBatch(records: InsalubrityRecord[]): Promise<number> {
     if (records.length === 0) return 0;
-    await firestoreService.ensureAuthenticatedWriteSession();
+    await dbService.ensureAuthenticatedWriteSession();
     const CHUNK_SIZE = 400;
     let savedCount = 0;
 
@@ -109,7 +109,7 @@ export const insalubridadeService = {
         const cleanMat = rec.matricula.trim().toUpperCase();
         const docId = rec.id || `insalubre-${cleanMat}-${rec.dataEvento}`;
         const ref = doc(db, INSALUBRIDADE_COLLECTION, docId);
-        const cleanData = sanitizeFirestoreData({
+        const cleanData = sanitizeDbData({
           id: docId,
           matricula: cleanMat,
           nomeColaborador: rec.nomeColaborador.trim(),
@@ -141,10 +141,10 @@ export const insalubridadeService = {
   async deleteInsalubrityRecord(docId: string): Promise<void> {
     const path = `${INSALUBRIDADE_COLLECTION}/${docId}`;
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
+      await dbService.ensureAuthenticatedWriteSession();
       await deleteDoc(doc(db, INSALUBRIDADE_COLLECTION, docId));
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   }

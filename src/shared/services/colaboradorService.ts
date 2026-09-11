@@ -9,10 +9,10 @@ import {
   query, 
   orderBy,
   Unsubscribe 
-} from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
+} from './db';
+import { db, logDbError, OperationType } from './db';
 import { Employee } from '../types';
-import { firestoreService, mapEmployeeDocument, prepareEmployeeForFirestore, sanitizeFirestoreData, COLLECTIONS, BatchProgressInfo } from './firestoreService';
+import { dbService, mapEmployeeDocument, prepareEmployeeForDb, sanitizeDbData, COLLECTIONS, BatchProgressInfo } from './dbService';
 import { hashPassword } from './authService';
 
 export const colaboradorService = {
@@ -42,12 +42,12 @@ export const colaboradorService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -68,7 +68,7 @@ export const colaboradorService = {
       });
       return list;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       return [];
     }
   },
@@ -80,8 +80,8 @@ export const colaboradorService = {
     const docId = (employee.matricula || employee.id || '').trim().toUpperCase();
     const path = `${COLLECTIONS.COLABORADORES}/${docId}`;
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
-      const cleanData = prepareEmployeeForFirestore(employee);
+      await dbService.ensureAuthenticatedWriteSession();
+      const cleanData = prepareEmployeeForDb(employee);
       await setDoc(doc(db, COLLECTIONS.COLABORADORES, docId), cleanData, { merge: true });
 
       if (employee.senhaInicial && employee.senhaInicial.trim().length >= 4) {
@@ -99,7 +99,7 @@ export const colaboradorService = {
         }, { merge: true });
       }
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -118,7 +118,7 @@ export const colaboradorService = {
     const totalChunks = Math.ceil(total / CHUNK_SIZE);
 
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
+      await dbService.ensureAuthenticatedWriteSession();
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         const chunk = employees.slice(i, i + CHUNK_SIZE);
         const batch = writeBatch(db);
@@ -128,7 +128,7 @@ export const colaboradorService = {
           const docId = (emp.matricula || emp.id || '').trim().toUpperCase();
           if (docId) {
             const ref = doc(db, COLLECTIONS.COLABORADORES, docId);
-            const cleanData = prepareEmployeeForFirestore(emp);
+            const cleanData = prepareEmployeeForDb(emp);
             batch.set(ref, cleanData, { merge: true });
           }
         });
@@ -148,7 +148,7 @@ export const colaboradorService = {
       }
       return { count, total, errors };
     } catch (error: any) {
-      logFirestoreError(error, OperationType.WRITE, COLLECTIONS.COLABORADORES);
+      logDbError(error, OperationType.WRITE, COLLECTIONS.COLABORADORES);
       errors.push(error?.message || 'Erro no processamento em lote de colaboradores');
       return { count, total, errors };
     }
@@ -160,13 +160,13 @@ export const colaboradorService = {
   async deleteColaborador(docId: string): Promise<void> {
     const path = `${COLLECTIONS.COLABORADORES}/${docId}`;
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
+      await dbService.ensureAuthenticatedWriteSession();
       await Promise.all([
         deleteDoc(doc(db, COLLECTIONS.COLABORADORES, docId)),
         deleteDoc(doc(db, COLLECTIONS.COLABORADORES_AUTH, docId)).catch(() => {}),
       ]);
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   }

@@ -36,7 +36,7 @@ import {
 } from '@/src/shared/types';
 import { InstitutionSettings, DocumentosModeloInstituicao } from '@/src/shared/types/institutionConfig';
 import { useInstitution } from '@/src/shared/contexts/InstitutionContext';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { rbacService } from '@/src/shared/services/rbacService';
 import { getSignaturesForCanteiro } from '@/src/shared/services/canteiroService';
 import { Button, Card, CardHeader, CardBody, Badge, Input } from '@/src/shared/components/ui';
@@ -162,8 +162,8 @@ export const DispensasFaltasManagement: React.FC<DispensasFaltasManagementProps>
       
       // Exatamente 2 consultas controladas com filtros de data no Firestore
       const [fetchedDispensas, fetchedRecords] = await Promise.all([
-        firestoreService.getDispensasByMonth(anoMes, canteiroParam),
-        firestoreService.getTimeRecordsByMonth(anoMes, canteiroParam),
+        dbService.getDispensasByMonth(anoMes, canteiroParam),
+        dbService.getTimeRecordsByMonth(anoMes, canteiroParam),
       ]);
 
       // Salva no cache

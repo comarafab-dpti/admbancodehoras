@@ -10,10 +10,10 @@ import {
   orderBy,
   limit,
   Unsubscribe 
-} from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
+} from './db';
+import { db, logDbError, OperationType } from './db';
 import { ConstructionSite, CanteiroSignatures, TratamentoTitulo } from '../types';
-import { firestoreService, sanitizeFirestoreData } from './firestoreService';
+import { dbService, sanitizeDbData } from './dbService';
 
 export const CANTEIROS_COLLECTION = 'canteiros_obras';
 
@@ -294,7 +294,7 @@ export const canteiroService = {
 
       return normalizePersistedSites(list);
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, CANTEIROS_COLLECTION);
+      logDbError(error, OperationType.GET, CANTEIROS_COLLECTION);
       return normalizePersistedSites([]);
     }
   },
@@ -371,13 +371,13 @@ export const canteiroService = {
           onSuccess(normalizePersistedSites(list));
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, CANTEIROS_COLLECTION);
+          logDbError(error, OperationType.LIST, CANTEIROS_COLLECTION);
           if (onError) onError(error);
           onSuccess(normalizePersistedSites([]));
         }
       );
     } catch (err: any) {
-      logFirestoreError(err, OperationType.LIST, CANTEIROS_COLLECTION);
+      logDbError(err, OperationType.LIST, CANTEIROS_COLLECTION);
       if (onError) onError(err);
       onSuccess(normalizePersistedSites([]));
       return () => {};
@@ -411,7 +411,7 @@ export const canteiroService = {
     const rawEndDate = site.expectedEndDate || site.dataPrevisaoFim || '';
     const rawNotes = site.notes || site.observacoes || '';
 
-    const dataToSave = sanitizeFirestoreData({
+    const dataToSave = sanitizeDbData({
       id: docId,
       name: rawName,
       nome: rawName,
@@ -452,10 +452,10 @@ export const canteiroService = {
     });
 
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
+      await dbService.ensureAuthenticatedWriteSession();
       await setDoc(doc(db, CANTEIROS_COLLECTION, docId), dataToSave, { merge: true });
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -466,10 +466,10 @@ export const canteiroService = {
   async deleteCanteiro(id: string): Promise<void> {
     const path = `${CANTEIROS_COLLECTION}/${id}`;
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
+      await dbService.ensureAuthenticatedWriteSession();
       await deleteDoc(doc(db, CANTEIROS_COLLECTION, id));
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminUser, AdminRole } from '@/src/shared/types';
 import { storageService } from '@/src/shared/services/storageService';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { registrarLogAuditoria } from '@/src/shared/services/auditService';
 import { ROLE_INFO, rbacService, CONSOLIDATED_ROLES } from '@/src/shared/services/rbacService';
 import { isMasterAdminEmail } from '@/src/shared/services/authService';
@@ -98,7 +98,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
     setIsRefreshing(true);
     setErrorMsg(null);
     try {
-      const freshList = await firestoreService.getAdmins(true);
+      const freshList = await dbService.getAdmins(true);
       const cleanedList = freshList.filter(a => 
         a.email && 
         !a.email.includes('@empresa.com.br') && 
@@ -148,7 +148,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
 
   // Sync real-time with Firestore (once, optimized)
   useEffect(() => {
-    const unsub = firestoreService.subscribeAdmins((list) => {
+    const unsub = dbService.subscribeAdmins((list) => {
       // Filtra contas fictícias legadas
       const cleanedList = list.filter(a => 
         a.email && 
@@ -356,7 +356,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
     };
 
     try {
-      await firestoreService.saveAdminUser(adminData);
+      await dbService.saveAdminUser(adminData);
 
       // Local State immediate update
       setAdmins(prev => {
@@ -371,7 +371,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
       });
 
       // Audit Log
-      await firestoreService.logSystemEvent({
+      await dbService.logSystemEvent({
         tipo: 'ALTERACAO_PERMISSAO_RBAC',
         descricao: editingAdmin 
           ? `Atualização de dados e perfil RBAC de ${adminData.nome} (${adminData.email}) -> ${nivelAcesso}`
@@ -448,7 +448,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
     };
 
     try {
-      await firestoreService.saveAdminUser(updated);
+      await dbService.saveAdminUser(updated);
 
       setAdmins(prev => prev.map(a => a.email.toLowerCase() === adm.email.toLowerCase() ? updated : a));
 
@@ -465,7 +465,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
       );
       setTimeout(() => setFeedbackMsg(null), 4000);
 
-      await firestoreService.logSystemEvent({
+      await dbService.logSystemEvent({
         tipo: 'ALTERACAO_PERMISSAO_RBAC',
         descricao: `Status de acesso de ${adm.nome} alterado para ${nextStatus.toUpperCase()}`,
         usuario: currentUserEmail,
@@ -495,7 +495,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
     };
 
     try {
-      await firestoreService.saveAdminUser(updated);
+      await dbService.saveAdminUser(updated);
 
       setAdmins(prev => prev.map(a => a.email.toLowerCase() === adm.email.toLowerCase() ? updated : a));
       setActiveTab(selectedRole);
@@ -503,7 +503,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
       setFeedbackMsg(`Usuário "${adm.nome}" aprovado e ativado no perfil ${ROLE_INFO[selectedRole]?.shortLabel || selectedRole}!`);
       setTimeout(() => setFeedbackMsg(null), 4000);
 
-      await firestoreService.logSystemEvent({
+      await dbService.logSystemEvent({
         tipo: 'ALTERACAO_PERMISSAO_RBAC',
         descricao: `Aprovação de usuário pendente: ${adm.nome} (${adm.email}) ativado como ${selectedRole}`,
         usuario: currentUserEmail,

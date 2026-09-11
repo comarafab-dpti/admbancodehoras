@@ -22,9 +22,9 @@ import {
   runTransaction,
   onSnapshot,
   Unsubscribe,
-} from 'firebase/firestore';
-import { db } from './firebase';
-import { COLLECTIONS, sanitizeFirestoreData } from './firestoreService';
+} from './db';
+import { db } from './db';
+import { COLLECTIONS, sanitizeDbData } from './dbService';
 import { registrarLogAuditoria } from './auditService';
 import {
   StatusCompetencia,
@@ -555,7 +555,7 @@ export const competenciaService = {
 
         chunk.forEach((resumo) => {
           const ref = doc(db, COLLECTIONS.RESUMO_MENSAL, resumo.id);
-          batch.set(ref, sanitizeFirestoreData(resumo), { merge: false });
+          batch.set(ref, sanitizeDbData(resumo), { merge: false });
         });
 
         await batch.commit();
@@ -764,7 +764,7 @@ export const competenciaService = {
     const batch = writeBatch(db);
     resumosAjustados.forEach((resumo) => {
       const ref = doc(db, COLLECTIONS.RESUMO_MENSAL, resumo.id);
-      batch.set(ref, sanitizeFirestoreData(resumo), { merge: true });
+      batch.set(ref, sanitizeDbData(resumo), { merge: true });
     });
     await batch.commit();
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Employee, TimeRecord, Branch, EmployeeStatus, ConstructionSite } from '@/src/shared/types';
 import { generateEmployeesTemplateCSV, triggerFileDownload } from '@/src/shared/utils/csvHandler';
 import { getEmployeeTotalBalance, formatHoursDecimal, formatHoursToDays } from '@/src/shared/utils/calculations';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { authService } from '@/src/shared/services/authService';
 import { 
   Users, 

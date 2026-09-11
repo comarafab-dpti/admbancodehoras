@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { authService, getFirebaseAuthErrorMessage, DEFAULT_MASTER_ACCOUNTS } from '@/src/shared/services/authService';
+import { authService, getAuthErrorMessage, DEFAULT_MASTER_ACCOUNTS } from '@/src/shared/services/authService';
 import { AuthSession } from '@/src/shared/types';
 import { ComaraLogo } from '@/src/shared/components/ComaraLogo';
 import { 
@@ -91,9 +91,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
         setErrorMessage('A janela de autenticação foi fechada antes de concluir o login.');
       } else if (code === 'auth/unauthorized-domain') {
         setIsUnauthorizedDomain(true);
-        setErrorMessage(getFirebaseAuthErrorMessage(code, error.message));
+        setErrorMessage(getAuthErrorMessage(code, error.message));
       } else {
-        setErrorMessage(getFirebaseAuthErrorMessage(code, error.message));
+        setErrorMessage(getAuthErrorMessage(code, error.message));
       }
     } finally {
       setIsLoading(false);

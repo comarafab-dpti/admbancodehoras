@@ -1,12 +1,12 @@
-import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
+import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from './db';
+import { db, logDbError, OperationType } from './db';
 import { 
   InstitutionSettings, 
   DEFAULT_INSTITUTION_SETTINGS 
 } from '../types/institutionConfig';
 import { rbacService } from './rbacService';
 import { registrarLogAuditoria } from './auditService';
-import { firestoreService } from './firestoreService';
+import { dbService } from './dbService';
 
 export const INSTITUTION_COLLECTION = 'institution_settings';
 export const INSTITUTION_DOC_ID = 'current';
@@ -100,7 +100,7 @@ export const institutionService = {
       lastFetchTime = Date.now();
       return cachedSettings;
     } catch (error: any) {
-      logFirestoreError(error, OperationType.GET, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
+      logDbError(error, OperationType.GET, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
       console.warn('[institutionService] Falha na leitura do Firestore. Retornando dados padrão/em cache:', error?.message);
       return cachedSettings || { ...DEFAULT_INSTITUTION_SETTINGS };
     }
@@ -142,7 +142,7 @@ export const institutionService = {
     const sanitized = sanitizePayload(mergedSettings);
 
     try {
-      await firestoreService.ensureAuthenticatedWriteSession();
+      await dbService.ensureAuthenticatedWriteSession();
       await setDoc(docRef, sanitized, { merge: true });
       
       // Atualiza o cache local
@@ -172,7 +172,7 @@ export const institutionService = {
 
       return mergedSettings;
     } catch (error: any) {
-      logFirestoreError(error, OperationType.WRITE, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
+      logDbError(error, OperationType.WRITE, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
       const friendlyMsg = error?.code === 'permission-denied'
         ? 'Erro de Permissão no Firestore: Apenas usuários autenticados como SUPER_ADMIN podem salvar configurações.'
         : `Erro ao salvar configurações institucionais: ${error?.message || 'Falha de comunicação com o banco de dados.'}`;
@@ -207,14 +207,14 @@ export const institutionService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.GET, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
+          logDbError(error, OperationType.GET, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
           console.warn('[institutionService] Snapshot error. Utilizando fallback local:', error?.message);
           if (onError) onError(error);
           onSuccess(cachedSettings || { ...DEFAULT_INSTITUTION_SETTINGS });
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.GET, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
+      logDbError(error, OperationType.GET, `${INSTITUTION_COLLECTION}/${INSTITUTION_DOC_ID}`);
       if (onError) onError(error);
       onSuccess(cachedSettings || { ...DEFAULT_INSTITUTION_SETTINGS });
       return () => {};

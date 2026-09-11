@@ -6,7 +6,7 @@ import { getSignaturesForCanteiro } from '@/src/shared/services/canteiroService'
 import { useInstitution } from '@/src/shared/contexts/InstitutionContext';
 import { IconButton } from '@/src/shared/components/IconButton';
 import { EditEmployeeModal } from './EditEmployeeModal';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { 
   getEmployeeTotalBalance, 
   formatHoursDecimal, 
@@ -246,7 +246,7 @@ export const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
     setIsSavingEmployee(true);
     setEmployeeEditError('');
     try {
-      await firestoreService.saveEmployee(employee);
+      await dbService.saveEmployee(employee);
       onUpdateEmployees?.(employees.map((item) => item.id === employee.id ? employee : item));
       setEmployeeToEdit(null);
     } catch (error: any) {

@@ -6,9 +6,9 @@ import {
   getDocs,
   writeBatch,
   Timestamp,
-} from 'firebase/firestore';
-import { db, getFirestoreFriendlyMessage, isPermissionError, isQuotaError } from './firebase';
-import { firestoreService } from './firestoreService';
+} from './db';
+import { db, getDbFriendlyMessage, isPermissionError, isQuotaError } from './db';
+import { dbService } from './dbService';
 
 /**
  * Firestore Web SDK does not expose listCollectionIds/getCollections. Keep this
@@ -77,7 +77,7 @@ function getErrorMessage(error: unknown): string {
   if (isPermissionError(error)) {
     return 'Permissão insuficiente para ler os dados desta coleção.';
   }
-  return getFirestoreFriendlyMessage(error);
+  return getDbFriendlyMessage(error);
 }
 
 async function exportDocuments(
@@ -246,11 +246,11 @@ export interface ImportProgress extends BackupProgress {
 function getImportErrorMessage(error: unknown): string {
   if (isQuotaError(error)) return 'Cota do Cloud Firestore excedida durante a restauração.';
   if (isPermissionError(error)) return 'Permissão insuficiente para alterar os dados desta coleção.';
-  return getFirestoreFriendlyMessage(error);
+  return getDbFriendlyMessage(error);
 }
 
 async function commitDeletes(references: DocumentReference[], collectionName: string, onProgress?: (progress: ImportProgress) => void, processed = 0, total = references.length): Promise<number> {
-  await firestoreService.ensureAuthenticatedWriteSession();
+  await dbService.ensureAuthenticatedWriteSession();
   for (let start = 0; start < references.length; start += MAX_BATCH_OPERATIONS) {
     const batch = writeBatch(db);
     const chunk = references.slice(start, start + MAX_BATCH_OPERATIONS);
@@ -287,7 +287,7 @@ async function writeBackupDocuments(
   mode: 'replace' | 'merge',
   onProgress?: (progress: ImportProgress) => void,
 ): Promise<void> {
-  await firestoreService.ensureAuthenticatedWriteSession();
+  await dbService.ensureAuthenticatedWriteSession();
   const operations: Array<{ collectionPath: string; document: BackupDocument }> = [];
   const flatten = (path: string, backupDocuments: BackupDocument[]) => {
     backupDocuments.forEach((backupDocument) => {
@@ -319,7 +319,7 @@ export async function importAllData(
   mode: 'replace' | 'merge',
   onProgress?: (progress: ImportProgress) => void,
 ): Promise<void> {
-  await firestoreService.ensureAuthenticatedWriteSession();
+  await dbService.ensureAuthenticatedWriteSession();
   let parsedData: unknown;
   try {
     parsedData = JSON.parse(await file.text());

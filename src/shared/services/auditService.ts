@@ -9,10 +9,10 @@ import {
   getDocs,
   where,
   Unsubscribe 
-} from 'firebase/firestore';
-import { db, logFirestoreError, OperationType } from './firebase';
+} from './db';
+import { db, logDbError, OperationType } from './db';
 import { AuditLog, AuditActionType } from '../types';
-import { firestoreService } from './firestoreService';
+import { dbService } from './dbService';
 
 export const AUDIT_COLLECTION = 'logs_auditoria';
 
@@ -77,7 +77,7 @@ export async function registrarLogAuditoria(dadosLog: DadosLogAuditoria | Regist
       }
     }
 
-    await firestoreService.ensureAuthenticatedWriteSession();
+    await dbService.ensureAuthenticatedWriteSession();
     await setDoc(doc(db, AUDIT_COLLECTION, auditId), sanitized);
     console.info(`[AUDIT] Log registrado com sucesso: [${tipoAcaoFinal}] ${dadosLog.detalhes}`);
   } catch (err) {
@@ -147,12 +147,12 @@ export const auditService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, AUDIT_COLLECTION);
+          logDbError(error, OperationType.LIST, AUDIT_COLLECTION);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, AUDIT_COLLECTION);
+      logDbError(error, OperationType.LIST, AUDIT_COLLECTION);
       if (onError) onError(error);
       return () => {};
     }
@@ -205,7 +205,7 @@ export const auditService = {
         return true;
       });
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, AUDIT_COLLECTION);
+      logDbError(error, OperationType.LIST, AUDIT_COLLECTION);
       return [];
     }
   }

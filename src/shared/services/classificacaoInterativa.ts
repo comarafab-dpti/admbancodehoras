@@ -238,8 +238,8 @@ export async function aplicarNovoSetorPersistido(
   parametros: ParametrosNovoSetor
 ): Promise<{ colaboradoresAtualizados: ImportacaoColaborador[]; novaUo: UnidadeOrganizacional }> {
   const resultado = aplicarNovoSetor(colaboradores, departamentoOriginal, parametros);
-  const { doc, setDoc } = await import('firebase/firestore');
-  const { db } = await import('./firebase');
+  const { doc, setDoc } = await import('./db');
+  const { db } = await import('./db');
   await setDoc(
     doc(db, UNIDADES_ORGANIZACIONAIS_COLLECTION, resultado.novaUo.codigo),
     resultado.novaUo,
@@ -357,9 +357,9 @@ export async function persistirColaboradoresFirestore(
   const chunks = particionarEmLotes(listaFiltrada, batchSize);
 
   // Lazy import do Firestore SDK e helpers para garantir isolamento em testes unitários puros
-  const { doc, writeBatch } = await import('firebase/firestore');
-  const { db } = await import('./firebase');
-  const { COLLECTIONS } = await import('./firestoreService');
+  const { doc, writeBatch } = await import('./db');
+  const { db } = await import('./db');
+  const { COLLECTIONS } = await import('./dbService');
 
   let salvosTotal = 0;
   const erros: string[] = [];

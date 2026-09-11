@@ -203,7 +203,7 @@ export async function syncPaystubsToEmployees(
  *     // 3. Save paystubs to Firestore
  *     const saveResults = await Promise.all(
  *       parseResult.paystubs.map(paystub =>
- *         firestoreService.savePaystubRecord(paystub)
+ *         dbService.savePaystubRecord(paystub)
  *       )
  *     );
  * 
@@ -220,7 +220,7 @@ export async function syncPaystubsToEmployees(
  *       });
  * 
  *       // Reload employees
- *       const updated = await firestoreService.getAllEmployees();
+ *       const updated = await dbService.getAllEmployees();
  *       onUpdateEmployees(updated);
  *     } else {
  *       setFeedback({

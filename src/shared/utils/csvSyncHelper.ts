@@ -228,7 +228,7 @@ export async function parseAndSyncEmployeesFromCSV(
  *         message: `✓ ${result.statistics.created} criados, ${result.statistics.updated} atualizados`
  *       });
  *       // Reload employees from Firestore
- *       const updated = await firestoreService.getAllEmployees();
+ *       const updated = await dbService.getAllEmployees();
  *       onUpdateEmployees(updated);
  *     } else {
  *       setImportFeedback({

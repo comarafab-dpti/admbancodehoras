@@ -22,7 +22,7 @@ import {
   carregarUnidadesOrganizacionais,
   listarUnidadesOrganizacionais,
 } from '@/src/shared/constants/unidadesOrganizacionais';
-import { firestoreService } from '@/src/shared/services/firestoreService';
+import { dbService } from '@/src/shared/services/dbService';
 import { authService } from '@/src/shared/services/authService';
 import { getEmployeeSaveAudit } from '@/src/shared/utils/employeeSaveRouting';
 
@@ -275,7 +275,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     setIsSaving(true);
     try {
       // 1. Gravação direta no Firestore
-      await firestoreService.saveEmployee(employeeToSave);
+      await dbService.saveEmployee(employeeToSave);
 
       // 2. Se o RH definiu a senha inicial, registra no módulo de Auth
       if (hasInitialPassword) {
@@ -289,7 +289,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
       // 3. Log de Auditoria no Firestore
       const audit = getEmployeeSaveAudit(hasInitialPassword, isEditing, cleanMatricula, nome.trim());
-      await firestoreService.logSystemEvent({
+      await dbService.logSystemEvent({
         tipo: audit.tipo,
         descricao: audit.descricao,
         usuario: 'GESTOR_RH',

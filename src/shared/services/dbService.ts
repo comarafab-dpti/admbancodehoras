@@ -13,8 +13,8 @@ import {
   orderBy,
   limit,
   Unsubscribe 
-} from 'firebase/firestore';
-import { auth, db, logFirestoreError, handleFirestoreError, OperationType, isPermissionError } from './firebase';
+} from './db';
+import { auth, db, logDbError, handleDbError, OperationType, isPermissionError } from './db';
 import { Employee, TimeRecord, AdminUser, AdminRole, InsalubrityRecord, SystemConfig, ConstructionSite, PaystubRecord, DispensaSptfRecord, AuditLog } from '../types';
 import { hashPassword, autoSeedDefaultAdminMaster, authService } from './authService';
 import { canteiroService } from './canteiroService';
@@ -50,7 +50,7 @@ export interface BatchProgressInfo {
 }
 
 // Sanitizador universal para remover qualquer chave undefined antes de enviar ao Firestore
-export function sanitizeFirestoreData<T extends Record<string, any>>(data: T): Record<string, any> {
+export function sanitizeDbData<T extends Record<string, any>>(data: T): Record<string, any> {
   const clean: Record<string, any> = {};
   for (const key of Object.keys(data)) {
     const val = data[key];
@@ -84,13 +84,13 @@ export function mapEmployeeDocument(data: Record<string, any>, id: string): Empl
 }
 
 // Higienizador robusto para Colaboradores. Campos legados só são mantidos quando informados.
-export function prepareEmployeeForFirestore(emp: Partial<Employee>): Record<string, any> {
+export function prepareEmployeeForDb(emp: Partial<Employee>): Record<string, any> {
   const cleanMatricula = (emp.matricula || emp.id || '').trim().toUpperCase();
   const hasSenhaInicial = Boolean(emp.senhaInicial && emp.senhaInicial.trim().length >= 4);
   const rawPrimeiroAcesso = hasSenhaInicial ? false : emp.primeiroAcesso;
   const rawSenhaCadastrada = hasSenhaInicial ? true : emp.senhaCadastrada;
 
-  return sanitizeFirestoreData({
+  return sanitizeDbData({
     id: cleanMatricula || emp.id || `emp-${Date.now()}`,
     matricula: cleanMatricula,
     nome: (emp.nome || '').trim(),
@@ -138,7 +138,7 @@ export function prepareEmployeeForFirestore(emp: Partial<Employee>): Record<stri
 }
 
 // Higienizador robusto com valores padrão garantidos para Contracheques Digitais
-export function preparePaystubForFirestore(p: Partial<PaystubRecord>): Record<string, any> {
+export function preparePaystubForDb(p: Partial<PaystubRecord>): Record<string, any> {
   const cleanMatricula = (p.matricula || '').trim().toUpperCase();
   const cleanMesAno = (p.mesAno || `${String(p.mes || '01').padStart(2, '0')}-${p.ano || '2026'}`).trim();
   const docId = p.id || `${cleanMatricula}_${cleanMesAno}`;
@@ -146,7 +146,7 @@ export function preparePaystubForFirestore(p: Partial<PaystubRecord>): Record<st
   const parsedMes = typeof p.mes === 'number' ? p.mes : parseInt(cleanMesAno.split('-')[0] || '1', 10);
   const competencia = `${parsedAno}-${String(parsedMes).padStart(2, '0')}`;
 
-  return sanitizeFirestoreData({
+  return sanitizeDbData({
     id: docId,
     matricula: cleanMatricula,
     nome: (p.nome || '').trim(),
@@ -186,7 +186,7 @@ export function preparePaystubForFirestore(p: Partial<PaystubRecord>): Record<st
 }
 
 // Higienizador robusto com valores padrão garantidos para Guias de Dispensa de SPTF
-export function prepareDispensaSptfForFirestore(d: Partial<DispensaSptfRecord>): Record<string, any> {
+export function prepareDispensaSptfForDb(d: Partial<DispensaSptfRecord>): Record<string, any> {
   const docId = d.id || `dispensa_${Date.now()}_${d.matricula || 'MAT'}`;
   const now = new Date();
   const ano = now.getFullYear();
@@ -194,7 +194,7 @@ export function prepareDispensaSptfForFirestore(d: Partial<DispensaSptfRecord>):
   const numeroGuia = d.numeroGuia || `SPTF-${ano}/${randomSeq}`;
   const dataFinal = d.data || now.toISOString().split('T')[0];
 
-  return sanitizeFirestoreData({
+  return sanitizeDbData({
     id: docId,
     numeroGuia: numeroGuia,
     matricula: (d.matricula || '').trim().toUpperCase(),
@@ -217,7 +217,7 @@ export function prepareDispensaSptfForFirestore(d: Partial<DispensaSptfRecord>):
   });
 }
 
-export const firestoreService = {
+export const dbService = {
   async ensureAuthenticatedWriteSession(): Promise<void> {
     if (auth.currentUser) return;
 
@@ -267,12 +267,12 @@ export const firestoreService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -373,12 +373,12 @@ export const firestoreService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -466,7 +466,7 @@ export const firestoreService = {
       list.sort((a, b) => (b.dataRegistro || '').localeCompare(a.dataRegistro || ''));
       return list;
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       throw error;
     }
   },
@@ -516,12 +516,12 @@ export const firestoreService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -562,7 +562,7 @@ export const firestoreService = {
       });
       return list;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       return [];
     }
   },
@@ -600,7 +600,7 @@ export const firestoreService = {
         atualizadoEm: data.atualizadoEm,
       };
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, `${COLLECTIONS.ADMIN_USERS}/${cleanId}`);
+      logDbError(error, OperationType.GET, `${COLLECTIONS.ADMIN_USERS}/${cleanId}`);
       return null;
     }
   },
@@ -624,7 +624,7 @@ export const firestoreService = {
       });
       return list;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       return [];
     }
   },
@@ -665,7 +665,7 @@ export const firestoreService = {
       });
       return list;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       return [];
     }
   },
@@ -679,7 +679,7 @@ export const firestoreService = {
     const path = `${COLLECTIONS.COLABORADORES}/${docId}`;
     try {
       await this.ensureAuthenticatedWriteSession();
-      const cleanData = prepareEmployeeForFirestore(employee);
+      const cleanData = prepareEmployeeForDb(employee);
       await setDoc(doc(db, COLLECTIONS.COLABORADORES, docId), cleanData, { merge: true });
 
       // Se informou senha inicial, cria/atualiza credencial em colaboradores_auth
@@ -698,7 +698,7 @@ export const firestoreService = {
         }, { merge: true });
       }
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -712,7 +712,7 @@ export const firestoreService = {
         deleteDoc(doc(db, COLLECTIONS.COLABORADORES_AUTH, docId)).catch(() => {}),
       ]);
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   },
@@ -726,7 +726,7 @@ export const firestoreService = {
     const path = `${COLLECTIONS.LANCAMENTOS}/${docId}`;
     try {
       await this.ensureAuthenticatedWriteSession();
-      const cleanData = sanitizeFirestoreData({
+      const cleanData = sanitizeDbData({
         id: record.id,
         matricula: (record.matricula || '').trim().toUpperCase(),
         employeeName: record.employeeName || '',
@@ -758,7 +758,7 @@ export const firestoreService = {
 
       await setDoc(doc(db, COLLECTIONS.LANCAMENTOS, docId), cleanData, { merge: true });
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -769,7 +769,7 @@ export const firestoreService = {
       await this.ensureAuthenticatedWriteSession();
       await deleteDoc(doc(db, COLLECTIONS.LANCAMENTOS, docId));
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   },
@@ -800,7 +800,7 @@ export const firestoreService = {
         for (const emp of chunk) {
           const docId = (emp.matricula || emp.id || '').trim().toUpperCase();
           const ref = doc(db, COLLECTIONS.COLABORADORES, docId);
-          const cleanEmp = prepareEmployeeForFirestore(emp);
+          const cleanEmp = prepareEmployeeForDb(emp);
           batch.set(ref, cleanEmp, { merge: true });
 
           // Se a linha do CSV veio com senha inicial definida
@@ -824,7 +824,7 @@ export const firestoreService = {
           await batch.commit();
           count += chunk.length;
         } catch (batchErr: any) {
-          logFirestoreError(batchErr, OperationType.WRITE, COLLECTIONS.COLABORADORES);
+          logDbError(batchErr, OperationType.WRITE, COLLECTIONS.COLABORADORES);
           errors.push(`Erro no lote ${chunkIndex}/${totalChunks}: ${batchErr?.message || 'Falha na gravação'}`);
         }
 
@@ -840,7 +840,7 @@ export const firestoreService = {
       }
       return { count, total, errors };
     } catch (error: any) {
-      logFirestoreError(error, OperationType.WRITE, COLLECTIONS.COLABORADORES);
+      logDbError(error, OperationType.WRITE, COLLECTIONS.COLABORADORES);
       errors.push(error?.message || 'Erro fatal no processamento em lotes');
       return { count, total, errors };
     }
@@ -866,7 +866,7 @@ export const firestoreService = {
         for (const rec of chunk) {
           const docId = rec.id || `rec-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
           const ref = doc(db, COLLECTIONS.LANCAMENTOS, docId);
-          const cleanRec = sanitizeFirestoreData({
+          const cleanRec = sanitizeDbData({
             id: docId,
             matricula: rec.matricula.trim().toUpperCase(),
             employeeName: rec.employeeName || '',
@@ -898,7 +898,7 @@ export const firestoreService = {
           await batch.commit();
           count += chunk.length;
         } catch (batchErr: any) {
-          logFirestoreError(batchErr, OperationType.WRITE, COLLECTIONS.LANCAMENTOS);
+          logDbError(batchErr, OperationType.WRITE, COLLECTIONS.LANCAMENTOS);
           errors.push(`Erro no lote ${chunkIndex}/${totalChunks}: ${batchErr?.message || 'Falha na gravação do lote'}`);
         }
 
@@ -914,7 +914,7 @@ export const firestoreService = {
       }
       return { count, total, errors };
     } catch (error: any) {
-      logFirestoreError(error, OperationType.WRITE, COLLECTIONS.LANCAMENTOS);
+      logDbError(error, OperationType.WRITE, COLLECTIONS.LANCAMENTOS);
       errors.push(error?.message || 'Erro fatal no processamento em lote');
       return { count, total, errors };
     }
@@ -1032,12 +1032,12 @@ export const firestoreService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -1105,7 +1105,7 @@ export const firestoreService = {
 
       return list;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       return [];
     }
   },
@@ -1116,7 +1116,7 @@ export const firestoreService = {
     const path = `${COLLECTIONS.INSALUBRIDADE}/${docId}`;
     try {
       await this.ensureAuthenticatedWriteSession();
-      const dataToSave = sanitizeFirestoreData({
+      const dataToSave = sanitizeDbData({
         id: docId,
         matricula: cleanMat,
         nomeColaborador: record.nomeColaborador.trim(),
@@ -1138,7 +1138,7 @@ export const firestoreService = {
       });
       await setDoc(doc(db, COLLECTIONS.INSALUBRIDADE, docId), dataToSave, { merge: true });
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -1157,7 +1157,7 @@ export const firestoreService = {
         const cleanMat = rec.matricula.trim().toUpperCase();
         const docId = rec.id || `insalubre-${cleanMat}-${rec.dataEvento}`;
         const ref = doc(db, COLLECTIONS.INSALUBRIDADE, docId);
-        const cleanData = sanitizeFirestoreData({
+        const cleanData = sanitizeDbData({
           id: docId,
           matricula: cleanMat,
           nomeColaborador: rec.nomeColaborador.trim(),
@@ -1190,7 +1190,7 @@ export const firestoreService = {
       await this.ensureAuthenticatedWriteSession();
       await deleteDoc(doc(db, COLLECTIONS.INSALUBRIDADE, docId));
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   },
@@ -1228,12 +1228,12 @@ export const firestoreService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.GET, path);
+          logDbError(error, OperationType.GET, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -1257,7 +1257,7 @@ export const firestoreService = {
       }
       return null;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, path);
+      logDbError(error, OperationType.GET, path);
       return null;
     }
   },
@@ -1266,7 +1266,7 @@ export const firestoreService = {
     const path = `${COLLECTIONS.SYSTEM_CONFIG}/global`;
     try {
       await this.ensureAuthenticatedWriteSession();
-      const dataToSave = sanitizeFirestoreData({
+      const dataToSave = sanitizeDbData({
         logoUrl: config.logoUrl || '',
         companyName: config.companyName || 'COMARA',
         subtitle: config.subtitle || 'Comissão de Aeroportos da Região Amazônica',
@@ -1276,7 +1276,7 @@ export const firestoreService = {
       });
       await setDoc(doc(db, COLLECTIONS.SYSTEM_CONFIG, 'global'), dataToSave, { merge: true });
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -1327,7 +1327,7 @@ export const firestoreService = {
         setDoc(doc(db, COLLECTIONS.USUARIOS_SISTEMA, docId), dataToSave, { merge: true })
       ]);
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, path);
+      logDbError(error, OperationType.WRITE, path);
       throw error;
     }
   },
@@ -1342,7 +1342,7 @@ export const firestoreService = {
         deleteDoc(doc(db, COLLECTIONS.USUARIOS_SISTEMA, cleanId))
       ]);
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, path);
+      logDbError(error, OperationType.DELETE, path);
       throw error;
     }
   },
@@ -1377,7 +1377,7 @@ export const firestoreService = {
     try {
       await this.ensureAuthenticatedWriteSession();
       const logId = `log-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-      const logData = sanitizeFirestoreData({
+      const logData = sanitizeDbData({
         id: logId,
         tipo: event.tipo || 'LOG_SISTEMA',
         descricao: event.descricao || '',
@@ -1439,7 +1439,7 @@ export const firestoreService = {
       });
       return list;
     } catch (error) {
-      logFirestoreError(error, OperationType.GET, COLLECTIONS.CANTEIROS);
+      logDbError(error, OperationType.GET, COLLECTIONS.CANTEIROS);
       return [];
     }
   },
@@ -1520,12 +1520,12 @@ export const firestoreService = {
           onSuccess(items);
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error as Error);
       return () => {};
     }
@@ -1539,10 +1539,10 @@ export const firestoreService = {
 
     try {
       await this.ensureAuthenticatedWriteSession();
-      const sanitized = preparePaystubForFirestore(paystub);
+      const sanitized = preparePaystubForDb(paystub);
       await setDoc(doc(db, COLLECTIONS.CONTRACHEQUES, docId), sanitized, { merge: true });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
+      handleDbError(error, OperationType.WRITE, path);
     }
   },
 
@@ -1565,7 +1565,7 @@ export const firestoreService = {
           const cleanMesAno = p.mesAno.trim();
           const docId = p.id || `${cleanMatricula}_${cleanMesAno}`;
           const ref = doc(db, COLLECTIONS.CONTRACHEQUES, docId);
-          const sanitized = preparePaystubForFirestore(p);
+          const sanitized = preparePaystubForDb(p);
           batch.set(ref, sanitized, { merge: true });
         });
 
@@ -1583,7 +1583,7 @@ export const firestoreService = {
         }
       }
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, COLLECTIONS.CONTRACHEQUES);
+      logDbError(error, OperationType.WRITE, COLLECTIONS.CONTRACHEQUES);
       throw error;
     }
   },
@@ -1601,7 +1601,7 @@ export const firestoreService = {
       await this.ensureAuthenticatedWriteSession();
       await deleteDoc(doc(db, COLLECTIONS.CONTRACHEQUES, id));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
+      handleDbError(error, OperationType.DELETE, path);
     }
   },
 
@@ -1669,12 +1669,12 @@ export const firestoreService = {
           }
         },
         (error) => {
-          logFirestoreError(error, OperationType.LIST, path);
+          logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
         }
       );
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       if (onError) onError(error);
       return () => {};
     }
@@ -1735,7 +1735,7 @@ export const firestoreService = {
       list.sort((a, b) => (b.emitidoEm || b.data || '').localeCompare(a.emitidoEm || a.data || ''));
       return list;
     } catch (error: any) {
-      logFirestoreError(error, OperationType.LIST, path);
+      logDbError(error, OperationType.LIST, path);
       throw error;
     }
   },
@@ -1750,7 +1750,7 @@ export const firestoreService = {
 
     // 1. Sanitizar dados do lançamento de débito no Banco de Horas
     const lancRef = doc(db, COLLECTIONS.LANCAMENTOS, record.id);
-    const cleanRecord = sanitizeFirestoreData({
+    const cleanRecord = sanitizeDbData({
       id: record.id,
       matricula: (record.matricula || '').trim().toUpperCase(),
       employeeName: record.employeeName || '',
@@ -1778,7 +1778,7 @@ export const firestoreService = {
 
     // 2. Sanitizar dados da Guia de Dispensa de SPTF
     const dispensaRef = doc(db, COLLECTIONS.DISPENSAS_SPTF, dispensa.id);
-    const cleanDispensa = prepareDispensaSptfForFirestore({
+    const cleanDispensa = prepareDispensaSptfForDb({
       ...dispensa,
       lancamentoId: record.id,
       employeeSede: dispensa.employeeSede || record.employeeSede || '',
@@ -1789,7 +1789,7 @@ export const firestoreService = {
     try {
       await batch.commit();
     } catch (error) {
-      logFirestoreError(error, OperationType.WRITE, COLLECTIONS.DISPENSAS_SPTF);
+      logDbError(error, OperationType.WRITE, COLLECTIONS.DISPENSAS_SPTF);
       throw error;
     }
   },
@@ -1804,7 +1804,7 @@ export const firestoreService = {
     try {
       await batch.commit();
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, COLLECTIONS.DISPENSAS_SPTF);
+      logDbError(error, OperationType.DELETE, COLLECTIONS.DISPENSAS_SPTF);
       throw error;
     }
   },
@@ -1847,7 +1847,7 @@ export const firestoreService = {
         await pBatch.commit();
       }
     } catch (error) {
-      logFirestoreError(error, OperationType.DELETE, 'all');
+      logDbError(error, OperationType.DELETE, 'all');
       throw error;
     }
   },
