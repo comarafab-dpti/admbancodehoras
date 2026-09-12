@@ -8,6 +8,7 @@ import { authService, getAuthErrorMessage } from './shared/services/authService'
 import { queryCache } from './shared/services/queryCache';
 
 import { Navbar, ActiveTab, UserMode } from './admin/Navbar';
+import { AppSidebar, AppShellHeader } from './admin/layout/AppShell';
 import { AdminLoginModal } from './admin/AdminLoginModal';
 import { DatabaseSafetyActionModal, SafetyActionType } from './admin/DatabaseSafetyActionModal';
 import { SessionTimeoutModal } from './shared/components/SessionTimeoutModal';
@@ -104,6 +105,8 @@ function AppContent() {
     selectedMatriculaRef.current = selectedMatricula;
   }, [selectedMatricula]);
   const [theme, setTheme] = useState<'dark' | 'light'>(storageService.getTheme());
+  const [layoutMode, setLayoutMode] = useState<'classic' | 'sidebar'>(storageService.getLayoutMode());
+  const [isSidebarDrawerOpen, setIsSidebarDrawerOpen] = useState(false);
   const [userMode, setUserMode] = useState<UserMode>('ADMIN');
 
   // Sync data-theme attribute for CSS variable resolution (design token system)
@@ -969,6 +972,13 @@ function AppContent() {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
     storageService.saveTheme(next);
+  };
+
+  const handleToggleLayout = () => {
+    const next = layoutMode === 'sidebar' ? 'classic' : 'sidebar';
+    setLayoutMode(next);
+    storageService.setLayoutMode(next);
+    setIsSidebarDrawerOpen(false);
   };
 
   const handleToggleUserMode = (mode: UserMode) => {
@@ -2008,7 +2018,7 @@ function AppContent() {
   return (
     <div 
       translate="no"
-      className={`notranslate min-h-screen ${isDark ? 'bg-[#0B1426] text-[#E2E8F0]' : 'bg-[#F8FAFC] text-slate-900'} flex flex-col font-sans antialiased selection:bg-[#3B82F6] selection:text-white transition-colors`}
+      className={`notranslate min-h-screen ${isDark ? 'bg-[#0B1426] text-[#E2E8F0]' : 'bg-[#F8FAFC] text-slate-900'} ${layoutMode === 'sidebar' ? 'flex' : 'flex flex-col'} font-sans antialiased selection:bg-[#3B82F6] selection:text-white transition-colors`}
     >
       
       {/* Banner de Aviso de Permissão de Banco de Dados */}
@@ -2088,7 +2098,52 @@ function AppContent() {
         </div>
       )}
 
-      {/* Top Navigation Bar */}
+      {/* Sidebar (layout alternável "Clean") */}
+      {layoutMode === 'sidebar' && (
+        <AppSidebar
+          activeTab={activeTab}
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+            setIsSidebarDrawerOpen(false);
+          }}
+          onOpenQuickBatchModal={handleOpenQuickBatchModal}
+          onOpenNewEntry={() => handleOpenNewEntry()}
+          onOpenSptfDispensa={() => handleOpenSptfDispensa()}
+          systemConfig={systemConfig}
+          totalEmployees={tenancyEmployees.length}
+          currentUserEmail={currentUserEmail}
+          userRole={userRole}
+          onSignOut={handleSignOut}
+          isDrawerOpen={isSidebarDrawerOpen}
+          onCloseDrawer={() => setIsSidebarDrawerOpen(false)}
+        />
+      )}
+
+      {/* Coluna principal ( conteúdo ) — 'contents' mantém o layout clássico intacto */}
+      <div className={layoutMode === 'sidebar' ? 'flex-1 flex flex-col min-w-0' : 'contents'}>
+
+      {/* Top Navigation Bar / Header de boas-vindas */}
+      {layoutMode === 'sidebar' ? (
+        <AppShellHeader
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          onOpenQuickBatchModal={handleOpenQuickBatchModal}
+          onOpenNewEntry={() => handleOpenNewEntry()}
+          onOpenSptfDispensa={() => handleOpenSptfDispensa()}
+          onOpenImportRecordsModal={() => setIsImportRecordsModalOpen(true)}
+          onOpenLogoModal={() => setIsLogoModalOpen(true)}
+          onResetData={handleTriggerLoadMocksSafety}
+          onClearData={handleTriggerClearDataSafety}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onToggleLayout={handleToggleLayout}
+          userMode={userMode}
+          onToggleUserMode={handleToggleUserMode}
+          currentUserEmail={currentUserEmail}
+          userRole={userRole}
+          onOpenDrawer={() => setIsSidebarDrawerOpen(true)}
+        />
+      ) : (
       <Navbar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
@@ -2103,12 +2158,14 @@ function AppContent() {
         totalEmployees={tenancyEmployees.length}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        onToggleLayout={handleToggleLayout}
         userMode={userMode}
         onToggleUserMode={handleToggleUserMode}
         currentUserEmail={currentUserEmail}
         userRole={userRole}
         onSignOut={handleSignOut}
       />
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1880px] w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6">
@@ -2379,6 +2436,7 @@ function AppContent() {
           </span>
         </div>
       </footer>
+      </div>{/* fim da coluna principal */}
 
       {/* MODALS */}
       {/* 1. Modal: Lançamento Diário Individual */}

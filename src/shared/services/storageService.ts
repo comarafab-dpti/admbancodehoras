@@ -12,6 +12,7 @@ const THEME_KEY = 'banco_horas_theme_v1';
 const PAYSTUBS_KEY = 'comara_paystubs_v1';
 const DISPENSAS_KEY = 'comara_dispensas_sptf_v1';
 const CANTEIROS_KEY = 'comara_canteiros_v1';
+const LAYOUT_MODE_KEY = 'comara_layout_mode_v1';
 
 export const storageService = {
   getEmployees(): Employee[] {
@@ -247,6 +248,15 @@ export const storageService = {
 
   saveTheme(theme: 'dark' | 'light') {
     this.setTheme(theme);
+  },
+
+  // Layout Mode (App Shell: sidebar "clean" vs navbar clássica)
+  getLayoutMode(): 'classic' | 'sidebar' {
+    return (localStorage.getItem(LAYOUT_MODE_KEY) as 'classic' | 'sidebar') || 'classic';
+  },
+
+  setLayoutMode(mode: 'classic' | 'sidebar') {
+    localStorage.setItem(LAYOUT_MODE_KEY, mode);
   },
 
   // Paystubs (Contracheques Digitais)

@@ -35,6 +35,8 @@
 
 ## Design System — Paleta Institucional Aeronáutica
 
+- **Layout alternável:** o app tem dois shells para a área logada — a Navbar clássica (`src/admin/Navbar.tsx`) e o App Shell "Clean" (`src/admin/layout/AppShell.tsx`: `AppSidebar` navy + `AppShellHeader` de boas-vindas). A escolha persiste em `localStorage` (`storageService.getLayoutMode/setLayoutMode`, padrão `classic`) e troca pelo botão `LayoutPanelTop` (ao lado do alternador de tema). O dropdown da engrenagem vive em `src/admin/SettingsMenu.tsx`, compartilhado pelos dois shells — não duplicar esse menu. No modo sidebar o conteúdo fica em `div.contents` no modo clássico (wrapper neutro em App.tsx).
+
 - **Tokens:** `src/shared/constants/designTokens.ts` (TS reference) + CSS custom properties in `src/index.css` (`:root` for light, `[data-theme="dark"]` for dark). App.tsx syncs `data-theme` on `document.documentElement` via `useEffect`.
 - **Palette:** dark mode uses navy institutional surfaces (`#0B1426` base, `#16243D` card, `#243756` border) with slate text scale (`#E2E8F0`, `#94A3B8`, `#64748B`). Light mode uses slate surfaces (`#F1F5F9` base, `#FFFFFF` card, `#E2E8F0` border). Brand accent `#3B82F6` (blue-500) preserved across both themes. Semantic colors (success/danger/warning/purple) unchanged.
 - **Base components:** `src/shared/components/ui/` — `Button` (6 variants × 4 sizes, loading state), `Card`/`CardHeader`/`CardBody`, `Input` (label, icon, error, hint), `Badge` (6 semantic variants). All consume CSS variables for theme-awareness.
