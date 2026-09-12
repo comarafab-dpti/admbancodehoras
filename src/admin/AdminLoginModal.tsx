@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { authService, DEFAULT_MASTER_ACCOUNTS } from '@/src/shared/services/authService';
 import { ComaraLogo } from '@/src/shared/components/ComaraLogo';
-import { ModuleBadge } from '@/src/shared/components/ModuleBadge';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -329,9 +328,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <div className="text-center space-y-2 pt-2">
           <div className="flex justify-center mb-1">
             <ComaraLogo size="lg" />
-          </div>
-          <div className="flex justify-center">
-            <ModuleBadge tipo="admin" size="sm" />
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
             Acesso ao Sistema COMARA
