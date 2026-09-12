@@ -5,6 +5,7 @@ import { dbService, BatchProgressInfo } from './shared/services/dbService';
 import { seedService } from './shared/services/seedService';
 import { auth, onAuthStateChanged, getRedirectResult, firebaseSignOut, FirebaseUser, isPermissionError, isQuotaError, testConnection, getActiveRealtimeChannelCount } from './shared/services/db';
 import { authService, getAuthErrorMessage } from './shared/services/authService';
+import { queryCache } from './shared/services/queryCache';
 
 import { Navbar, ActiveTab, UserMode } from './admin/Navbar';
 import { AdminLoginModal } from './admin/AdminLoginModal';
@@ -572,6 +573,7 @@ function AppContent() {
   // -------------------------------------------------------------
   useEffect(() => {
     console.info('[Boot 1] getSession iniciado');
+    if (import.meta.env.DEV) console.info('[Cache] métricas no boot:', queryCache.getMetrics());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const email = user?.email?.toLowerCase().trim() || null;
       const authKey = user?.uid || email || 'anonymous';

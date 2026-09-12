@@ -4,6 +4,7 @@ interface CacheEntry<T> {
 }
 
 const entries = new Map<string, CacheEntry<unknown>>();
+const metrics = { hits: 0, misses: 0, invalidations: 0 };
 
 function purgeExpired(): void {
   const now = Date.now();
@@ -17,9 +18,11 @@ export const queryCache = {
     purgeExpired();
     const entry = entries.get(key);
     if (!entry) {
+      metrics.misses += 1;
       if (import.meta.env.DEV) console.info(`[Cache] miss: ${key}`);
       return undefined;
     }
+    metrics.hits += 1;
     if (import.meta.env.DEV) console.info(`[Cache] hit: ${key}`);
     return entry.value as T;
   },
@@ -29,9 +32,19 @@ export const queryCache = {
   },
 
   invalidate(keyPattern: string): void {
+    let invalidated = 0;
     for (const key of entries.keys()) {
-      if (key.startsWith(keyPattern)) entries.delete(key);
+      if (key.startsWith(keyPattern)) {
+        entries.delete(key);
+        invalidated += 1;
+      }
     }
+    if (invalidated > 0) metrics.invalidations += invalidated;
+    if (import.meta.env.DEV) console.info(`[Cache] invalidate: ${keyPattern} (${invalidated})`);
+  },
+
+  getMetrics() {
+    return { ...metrics, size: entries.size };
   },
 
   clear(): void {

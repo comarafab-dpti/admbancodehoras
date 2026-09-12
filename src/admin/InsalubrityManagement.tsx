@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Employee, Branch, InsalubrityRecord, GrauInsalubridade, SystemConfig, ConstructionSite, AdminRole } from '@/src/shared/types';
+import { dbService } from '@/src/shared/services/dbService';
+import { orderBy, where } from '@/src/shared/services/db';
+import { useDebouncedValue } from '@/src/shared/hooks/useDebouncedValue';
 import { InsalubritySimpleMatrixView } from './InsalubritySimpleMatrixView';
 import { InsalubrityConversionModal } from './InsalubrityConversionModal';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
@@ -119,6 +122,46 @@ export const InsalubrityManagement: React.FC<InsalubrityManagementProps> = ({
   const [selectedGrau, setSelectedGrau] = useState<string>('TODOS');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [recordPage, setRecordPage] = useState(1);
+  const [pagedRecords, setPagedRecords] = useState<InsalubrityRecord[]>([]);
+  const [pagedRecordTotal, setPagedRecordTotal] = useState(0);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const constraints: any[] = [orderBy('dataEvento', 'desc')];
+    if (selectedBranch !== 'TODAS') constraints.push(where('sede', '==', selectedBranch));
+    if (startDate) constraints.push(where('dataEvento', '>=', startDate));
+    if (endDate) constraints.push(where('dataEvento', '<=', endDate));
+    const search = debouncedSearchQuery.trim().toUpperCase();
+    if (search) constraints.push(where('matricula', '==', search));
+
+    setIsPageLoading(true);
+    dbService.getCollectionPage('insalubridade_records', recordPage, 50, constraints)
+      .then((result) => {
+        if (cancelled) return;
+        setPagedRecords(result.snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id, matricula: data.matricula || '', nomeColaborador: data.nomeColaborador || '',
+            sede: data.sede || 'SEDE', funcao: data.funcao || 'Operacional', dataEvento: data.dataEvento || '',
+            atividadeDesempenhada: data.atividadeDesempenhada || '', grauExposicao: data.grauExposicao || '20%',
+            quantidadeHorasDias: Number(data.quantidadeHorasDias || 1), unidade: data.unidade || 'DIAS',
+            responsavelLancamento: data.responsavelLancamento || '', observacoes: data.observacoes || '',
+            criadoEm: data.criadoEm || '', criadoPorEmail: data.criadoPorEmail,
+          } as InsalubrityRecord;
+        }));
+        setPagedRecordTotal(result.total);
+        setIsPageLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) { setPagedRecords([]); setPagedRecordTotal(0); setIsPageLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, [recordPage, debouncedSearchQuery, selectedBranch, startDate, endDate]);
+
+  React.useEffect(() => setRecordPage(1), [debouncedSearchQuery, selectedBranch, startDate, endDate]);
 
   // Modal: Novo / Editar Lançamento de Atividade
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -223,7 +266,7 @@ export const InsalubrityManagement: React.FC<InsalubrityManagementProps> = ({
     if (!employees || employees.length === 0) return [];
     const registeredMatriculas = new Set(employees.map(e => e.matricula.trim().toUpperCase()));
 
-    return insalubrityRecords.filter((rec) => {
+    return pagedRecords.filter((rec) => {
       if (!registeredMatriculas.has((rec.matricula || '').trim().toUpperCase())) return false;
 
       // Search
@@ -252,7 +295,7 @@ export const InsalubrityManagement: React.FC<InsalubrityManagementProps> = ({
 
       return true;
     });
-  }, [employees, insalubrityRecords, searchQuery, selectedBranch, selectedGrau, startDate, endDate]);
+  }, [employees, pagedRecords, searchQuery, selectedBranch, selectedGrau, startDate, endDate]);
 
   // Handle Form Submit
   const handleSubmitRecord = async (e: React.FormEvent) => {
@@ -356,6 +399,14 @@ export const InsalubrityManagement: React.FC<InsalubrityManagementProps> = ({
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between text-xs text-slate-400">
+        <span>{isPageLoading ? 'Carregando registros...' : `${pagedRecordTotal.toLocaleString('pt-BR')} registros`}</span>
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={recordPage <= 1} onClick={() => setRecordPage((page) => page - 1)} className="rounded border px-2 py-1 disabled:opacity-40">Anterior</button>
+          <span>Página {recordPage} de {Math.max(1, Math.ceil(pagedRecordTotal / 50))}</span>
+          <button type="button" disabled={recordPage >= Math.max(1, Math.ceil(pagedRecordTotal / 50))} onClick={() => setRecordPage((page) => page + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Próxima</button>
+        </div>
+      </div>
       {/* RENDERIZAÇÃO CONDICIONAL POR MODO */}
       {currentMode === 'SIMPLES' || isAuxDA ? (
         <InsalubritySimpleMatrixView

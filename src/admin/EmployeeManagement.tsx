@@ -3,7 +3,9 @@ import { Employee, TimeRecord, Branch, EmployeeStatus, ConstructionSite } from '
 import { generateEmployeesTemplateCSV, triggerFileDownload } from '@/src/shared/utils/csvHandler';
 import { formatHoursDecimal, formatHoursToDays } from '@/src/shared/utils/calculations';
 import { calcularSaldosConsolidados, chaveMatricula } from '@/src/shared/utils/saldo';
-import { dbService } from '@/src/shared/services/dbService';
+import { dbService, mapEmployeeDocument } from '@/src/shared/services/dbService';
+import { orderBy, where } from '@/src/shared/services/db';
+import { useDebouncedValue } from '@/src/shared/hooks/useDebouncedValue';
 import { authService } from '@/src/shared/services/authService';
 import { 
   Users, 
@@ -85,8 +87,9 @@ export interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
-export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
-  employees,
+export const EmployeeManagement = React.memo<EmployeeManagementProps>(
+  ({
+    employees,
   records,
   constructionSites = [],
   dispensas = [],
@@ -122,6 +125,46 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('TODOS');
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>('TODOS');
   const [versaoUos, setVersaoUos] = useState(0);
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeePageSize, setEmployeePageSize] = useState(25);
+  const [pagedEmployees, setPagedEmployees] = useState<Employee[]>([]);
+  const [pagedEmployeeTotal, setPagedEmployeeTotal] = useState(0);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
+
+  useEffect(() => {
+    let cancelled = false;
+    const constraints: any[] = [orderBy('nome', 'asc')];
+    if (filterSede !== 'TODAS') constraints.push(where('sedeCodigo', '==', filterSede));
+    if (filterStatus !== 'TODOS') constraints.push(where('status', '==', filterStatus));
+    if (filterSetor !== 'TODOS') constraints.push(where('lotacaoUoCodigo', '==', filterSetor));
+    const search = debouncedSearchTerm.trim();
+    if (search) {
+      const normalized = search.toUpperCase();
+      constraints.push(/^[0-9]+$/.test(normalized)
+        ? where('matricula', '==', normalized)
+        : where('nome', 'ilike', `%${search}%`));
+    }
+
+    setIsPageLoading(true);
+    dbService.getCollectionPage('colaboradores', employeePage, employeePageSize, constraints)
+      .then((result) => {
+        if (cancelled) return;
+        setPagedEmployees(result.snapshot.docs.map((docSnap) => mapEmployeeDocument(docSnap.data(), docSnap.id)));
+        setPagedEmployeeTotal(result.total);
+        setIsPageLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPagedEmployees([]);
+          setPagedEmployeeTotal(0);
+          setIsPageLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [employeePage, employeePageSize, filterSede, filterSetor, filterStatus, debouncedSearchTerm]);
+
+  useEffect(() => setEmployeePage(1), [filterSede, filterSetor, filterStatus, debouncedSearchTerm]);
 
   useEffect(() => {
     carregarUnidadesOrganizacionais()
@@ -182,7 +225,7 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   // COMBINAÇÃO DE BUSCA, FILTROS E ORDENAÇÃO VIA useMemo
   // -------------------------------------------------------------
   const filteredAndSortedEmployees = useMemo(() => {
-    return employees
+    return pagedEmployees
       .map((emp) => {
         const bal = balancesByMatricula.get(chaveMatricula(emp.matricula));
         if (!bal) return null;
@@ -282,7 +325,7 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
         }
         return sortConfig.direction === 'asc' ? comparison : -comparison;
       });
-  }, [employees, balancesByMatricula, constructionSites, filterSede, filterSetor, filterStatus, balanceFilter, searchTerm, sortConfig]);
+  }, [pagedEmployees, balancesByMatricula, constructionSites, filterSede, filterSetor, filterStatus, balanceFilter, searchTerm, sortConfig]);
 
   // -------------------------------------------------------------
   // HANDLERS DE ORDENAÇÃO (MOBILE & DESKTOP)
@@ -350,6 +393,19 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   return (
     <>
       <div className="no-print space-y-6">
+        <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
+          <span>{isPageLoading ? 'Carregando colaboradores...' : `${pagedEmployeeTotal.toLocaleString('pt-BR')} colaboradores`}</span>
+          <div className="flex items-center gap-2">
+            <select value={employeePageSize} onChange={(event) => { setEmployeePageSize(Number(event.target.value)); setEmployeePage(1); }} className="rounded border border-slate-700 bg-slate-900 px-2 py-1">
+              <option value={25}>25 por página</option>
+              <option value={50}>50 por página</option>
+              <option value={100}>100 por página</option>
+            </select>
+            <button type="button" disabled={employeePage <= 1} onClick={() => setEmployeePage((page) => page - 1)} className="rounded border px-2 py-1 disabled:opacity-40">Anterior</button>
+            <span>Página {employeePage} de {Math.max(1, Math.ceil(pagedEmployeeTotal / employeePageSize))}</span>
+            <button type="button" disabled={employeePage >= Math.max(1, Math.ceil(pagedEmployeeTotal / employeePageSize))} onClick={() => setEmployeePage((page) => page + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Próxima</button>
+          </div>
+        </div>
         {isMobile ? (
         /* ========================================================= */
         /* 1. VISÃO EXCLUSIVA MOBILE (< 768px)                       */
@@ -1663,4 +1719,4 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
       />
     </>
   );
-};
+});

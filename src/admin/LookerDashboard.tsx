@@ -93,8 +93,9 @@ interface LookerDashboardProps {
 type SortField = 'matricula' | 'nome' | 'sede' | 'saldo';
 type SortDirection = 'asc' | 'desc';
 
-export const LookerDashboard: React.FC<LookerDashboardProps> = ({
-  employees,
+export const LookerDashboard = React.memo<LookerDashboardProps>(
+  ({
+    employees,
   records,
   constructionSites = [],
   onOpenNewEntryModal,
@@ -1940,4 +1941,4 @@ export const LookerDashboard: React.FC<LookerDashboardProps> = ({
       />
     </div>
   );
-};
+});

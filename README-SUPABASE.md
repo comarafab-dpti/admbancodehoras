@@ -136,3 +136,17 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
   da Fase 3. Execute-a no SQL Editor do Supabase; ela não altera RLS/policies.
 - As demais telas CRUD ainda dependem de arrays globais para relatórios e
   cálculos; sua migração incremental fica registrada como próximo passo.
+
+## Fase 4 — paginação completa e piloto TanStack Query
+
+- Colaboradores, Insalubridade, Dispensas e Auditoria usam `getCollectionPage`
+  com `count: 'exact'` e `.range()` para suas tabelas. Os arrays globais seguem
+  disponíveis para cálculos, formulários e relatórios.
+- As buscas dessas telas usam `useDebouncedValue` com 300 ms. Contracheques
+  usa `useQuery` com chave por filtros/página, `keepPreviousData` e invalidação
+  após importação/exclusão. A migração em massa para TanStack Query fica para a
+  Fase 5.
+- `QueryClientProvider` e `ReactQueryDevtools` estão em `admin/main.tsx`; o
+  Devtools só é montado quando `import.meta.env.DEV` está ativo.
+- `React.memo` foi aplicado às telas de dashboard, colaboradores e
+  contracheques. O cache manual continua sendo usado pelas demais leituras.

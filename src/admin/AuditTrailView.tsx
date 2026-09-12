@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AuditLog, AuditActionType, ConstructionSite, Branch } from '@/src/shared/types';
-import { auditService } from '@/src/shared/services/auditService';
+import { dbService } from '@/src/shared/services/dbService';
+import { orderBy, where } from '@/src/shared/services/db';
+import { useDebouncedValue } from '@/src/shared/hooks/useDebouncedValue';
 import { ComaraLogo } from '@/src/shared/components/ComaraLogo';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
 import { 
@@ -56,24 +58,48 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedLogModal, setSelectedLogModal] = useState<AuditLog | null>(null);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [serverTotal, setServerTotal] = useState(0);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
 
-  // Carregar dados de auditoria em tempo real
+  // Carrega somente a página atual; a trilha não precisa de canal Realtime.
   useEffect(() => {
+    let cancelled = false;
     setIsLoading(true);
-    const unsub = auditService.subscribeAuditLogs(
-      (data) => {
-        setLogs(data);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error('Erro na subscrição de auditoria:', error);
-        setIsLoading(false);
-      },
-      300
-    );
+    const constraints: any[] = [orderBy('timestamp', 'desc')];
+    if (selectedCanteiro !== 'TODOS') constraints.push(where('canteiroId', '==', selectedCanteiro));
+    if (selectedTipoAcao !== 'TODOS') constraints.push(where('tipoAcao', '==', selectedTipoAcao));
+    if (startDate) constraints.push(where('timestamp', '>=', startDate));
+    if (endDate) constraints.push(where('timestamp', '<=', `${endDate}T23:59:59`));
+    if (debouncedSearchQuery.trim()) constraints.push(where('usuarioNome', 'ilike', `%${debouncedSearchQuery.trim()}%`));
 
-    return () => unsub();
-  }, []);
+    dbService.getCollectionPage('logs_auditoria', currentPage, PAGE_SIZE, constraints)
+      .then((result) => {
+        if (cancelled) return;
+        setLogs(result.snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          const userNome = data.usuarioNome || data.nomeUsuario || 'Operador';
+          const act = data.tipoAcao || data.acao || 'ACAO_SISTEMA';
+          return {
+            id: docSnap.id, usuarioId: data.usuarioId || '', usuarioNome: userNome, nomeUsuario: userNome,
+            usuarioPerfil: data.usuarioPerfil || 'OPERADOR', tipoAcao: act, acao: act, detalhes: data.detalhes || '',
+            detalhesJson: data.detalhesJson, canteiroId: data.canteiroId || 'TODOS', timestamp: data.timestamp || '',
+            ipOrigem: data.ipOrigem, recursoId: data.recursoId, dadosAnteriores: data.dadosAnteriores, dadosNovos: data.dadosNovos,
+          } as AuditLog;
+        }));
+        setServerTotal(result.total);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Erro ao carregar página de auditoria:', error);
+          setLogs([]);
+          setServerTotal(0);
+          setIsLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [currentPage, selectedCanteiro, selectedTipoAcao, startDate, endDate, debouncedSearchQuery]);
 
   // Lista de canteiros disponíveis para filtro
   const canteiroOptions = useMemo(() => {
@@ -242,11 +268,10 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({
   }, [logs]);
 
   // Paginação (50 registros por página conforme requisitos)
-  const totalPages = Math.ceil(filteredLogs.length / PAGE_SIZE) || 1;
+  const totalPages = Math.ceil(serverTotal / PAGE_SIZE) || 1;
   const paginatedLogs = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredLogs.slice(start, start + PAGE_SIZE);
-  }, [filteredLogs, currentPage]);
+    return filteredLogs;
+  }, [filteredLogs]);
 
   // Resetar página ao mudar filtros
   useEffect(() => {

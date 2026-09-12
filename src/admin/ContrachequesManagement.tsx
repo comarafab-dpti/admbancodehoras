@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Employee, PaystubRecord, AdminRole, ConstructionSite } from '@/src/shared/types';
 import { lazy } from 'react';
 import { normalizeMatricula } from '@/src/shared/utils/matriculaUtils';
 import { dbService } from '@/src/shared/services/dbService';
 import { orderBy, where } from '@/src/shared/services/db';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/src/shared/hooks/useDebouncedValue';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
 
 const ContrachequeMirrorView = lazy(() => import('./ContrachequeMirrorView').then((module) => ({ default: module.ContrachequeMirrorView })));
@@ -25,7 +27,7 @@ import {
   ShieldCheck, 
   ArrowLeft,
   Sparkles,
-  Layers
+  Layers,
 } from 'lucide-react';
 
 interface ContrachequesManagementProps {
@@ -40,8 +42,9 @@ interface ContrachequesManagementProps {
   userRole?: AdminRole | string;
 }
 
-export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = ({
-  employees,
+export const ContrachequesManagement = React.memo<ContrachequesManagementProps>(
+  ({
+    employees,
   paystubs,
   constructionSites = [],
   onSaveBatchPaystubs,
@@ -59,56 +62,47 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
   const [selectedMesAno, setSelectedMesAno] = useState<string>('TODOS');
   const [selectedSede, setSelectedSede] = useState<string>('TODAS');
   const [currentPage, setCurrentPage] = useState(1);
-  const [serverPaystubs, setServerPaystubs] = useState<PaystubRecord[]>([]);
-  const [serverTotal, setServerTotal] = useState(0);
-  const [isPageLoading, setIsPageLoading] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    const constraints: any[] = [orderBy('competencia', 'desc')];
-    const normalizedSearch = searchTerm.trim().toUpperCase();
-    if (normalizedSearch) constraints.push(where('matricula', '==', normalizedSearch));
-    if (selectedMesAno !== 'TODOS') {
-      const [mes, ano] = selectedMesAno.split('-');
-      if (mes && ano) constraints.push(where('competencia', '==', `${ano}-${mes.padStart(2, '0')}`));
-    }
-    if (selectedSede !== 'TODAS') constraints.push(where('sede', '==', selectedSede));
+  const queryClient = useQueryClient();
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
+  const pageQuery = useQuery({
+    queryKey: ['contracheques', { currentPage, searchTerm: debouncedSearchTerm, selectedMesAno, selectedSede }],
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const constraints: any[] = [orderBy('competencia', 'desc')];
+      const normalizedSearch = debouncedSearchTerm.trim().toUpperCase();
+      if (normalizedSearch) constraints.push(where('matricula', '==', normalizedSearch));
+      if (selectedMesAno !== 'TODOS') {
+        const [mes, ano] = selectedMesAno.split('-');
+        if (mes && ano) constraints.push(where('competencia', '==', `${ano}-${mes.padStart(2, '0')}`));
+      }
+      if (selectedSede !== 'TODAS') constraints.push(where('sede', '==', selectedSede));
 
-    setIsPageLoading(true);
-    dbService.getCollectionPage('contracheques', currentPage, 20, constraints)
-      .then((result) => {
-        if (cancelled) return;
-        const items = result.snapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            matricula: data.matricula || '', nome: data.nome || '', cargo: data.cargo || '',
-            sede: data.sede || 'KO-DL', periodo: data.periodo || '', mesAno: data.mesAno || '',
-            ano: Number(data.ano || 2026), mes: Number(data.mes || 1), dataInicio: data.dataInicio || '', dataFim: data.dataFim || '',
-            cpf: data.cpf || '', banco: data.banco || '', agencia: data.agencia || '', conta: data.conta || '',
-            rubricas: Array.isArray(data.rubricas) ? data.rubricas : [], totalProventos: Number(data.totalProventos || 0),
-            totalDescontos: Number(data.totalDescontos || 0), valorLiquido: Number(data.valorLiquido || 0),
-            salarioBase: data.salarioBase !== undefined ? Number(data.salarioBase) : undefined,
-            baseInss: data.baseInss !== undefined ? Number(data.baseInss) : undefined,
-            baseFgts: data.baseFgts !== undefined ? Number(data.baseFgts) : undefined,
-            fgtsMes: data.fgtsMes !== undefined ? Number(data.fgtsMes) : undefined,
-            baseIrrf: data.baseIrrf !== undefined ? Number(data.baseIrrf) : undefined,
-            importadoEm: data.importadoEm || '', importadoPorEmail: data.importadoPorEmail || '', observacoes: data.observacoes || '',
-          } as PaystubRecord;
-        });
-        setServerPaystubs(items);
-        setServerTotal(result.total);
-        setIsPageLoading(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setServerPaystubs([]);
-          setServerTotal(0);
-          setIsPageLoading(false);
-        }
+      const result = await dbService.getCollectionPage('contracheques', currentPage, 20, constraints);
+      const items = result.snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id, matricula: data.matricula || '', nome: data.nome || '', cargo: data.cargo || '',
+          sede: data.sede || 'KO-DL', periodo: data.periodo || '', mesAno: data.mesAno || '',
+          ano: Number(data.ano || 2026), mes: Number(data.mes || 1), dataInicio: data.dataInicio || '', dataFim: data.dataFim || '',
+          cpf: data.cpf || '', banco: data.banco || '', agencia: data.agencia || '', conta: data.conta || '',
+          rubricas: Array.isArray(data.rubricas) ? data.rubricas : [], totalProventos: Number(data.totalProventos || 0),
+          totalDescontos: Number(data.totalDescontos || 0), valorLiquido: Number(data.valorLiquido || 0),
+          salarioBase: data.salarioBase !== undefined ? Number(data.salarioBase) : undefined,
+          baseInss: data.baseInss !== undefined ? Number(data.baseInss) : undefined,
+          baseFgts: data.baseFgts !== undefined ? Number(data.baseFgts) : undefined,
+          fgtsMes: data.fgtsMes !== undefined ? Number(data.fgtsMes) : undefined,
+          baseIrrf: data.baseIrrf !== undefined ? Number(data.baseIrrf) : undefined,
+          importadoEm: data.importadoEm || '', importadoPorEmail: data.importadoPorEmail || '', observacoes: data.observacoes || '',
+        } as PaystubRecord;
       });
-    return () => { cancelled = true; };
-  }, [currentPage, searchTerm, selectedMesAno, selectedSede]);
+      return { items, total: result.total };
+    },
+  });
+
+  const serverPaystubs = pageQuery.data?.items || [];
+  const serverTotal = pageQuery.data?.total || 0;
+  const isPageLoading = pageQuery.isLoading || pageQuery.isFetching;
 
   // Obter lista única de competências (mesAno) disponíveis
   const availableMesAnos = useMemo(() => {
@@ -146,6 +140,16 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
   const totalBruto = useMemo(() => filteredPaystubs.reduce((acc, p) => acc + p.totalProventos, 0), [filteredPaystubs]);
   const totalDescontos = useMemo(() => filteredPaystubs.reduce((acc, p) => acc + p.totalDescontos, 0), [filteredPaystubs]);
   const totalLiquido = useMemo(() => filteredPaystubs.reduce((acc, p) => acc + p.valorLiquido, 0), [filteredPaystubs]);
+
+  const handleImportBatch = async (items: PaystubRecord[]) => {
+    await onSaveBatchPaystubs(items);
+    await queryClient.invalidateQueries({ queryKey: ['contracheques'] });
+  };
+
+  const handleDeletePaystub = async (id: string) => {
+    await onDeletePaystub(id);
+    await queryClient.invalidateQueries({ queryKey: ['contracheques'] });
+  };
 
   // Se o usuário estiver visualizando o espelho digital de um contracheque
   if (selectedPaystubForView) {
@@ -397,7 +401,7 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
                           <Printer className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => onDeletePaystub(p.id)}
+                          onClick={() => handleDeletePaystub(p.id)}
                           className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors active:scale-[0.98] cursor-pointer"
                           title="Excluir Contracheque"
                         >
@@ -435,7 +439,7 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
       <ImportContrachequeModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onImportBatch={onSaveBatchPaystubs}
+        onImportBatch={handleImportBatch}
         onSaveEmployees={onSaveEmployees}
         employees={employees}
         constructionSites={constructionSites}
@@ -444,4 +448,4 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
       />
     </div>
   );
-};
+});

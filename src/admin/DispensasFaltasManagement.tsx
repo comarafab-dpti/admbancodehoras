@@ -37,6 +37,8 @@ import {
 import { InstitutionSettings, DocumentosModeloInstituicao } from '@/src/shared/types/institutionConfig';
 import { useInstitution } from '@/src/shared/contexts/InstitutionContext';
 import { dbService } from '@/src/shared/services/dbService';
+import { orderBy, where } from '@/src/shared/services/db';
+import { useDebouncedValue } from '@/src/shared/hooks/useDebouncedValue';
 import { rbacService } from '@/src/shared/services/rbacService';
 import { getSignaturesForCanteiro } from '@/src/shared/services/canteiroService';
 import { Button, Card, CardHeader, CardBody, Badge, Input } from '@/src/shared/components/ui';
@@ -127,6 +129,45 @@ export const DispensasFaltasManagement: React.FC<DispensasFaltasManagementProps>
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('TODOS');
   const [tipoFaltaFilter, setTipoFaltaFilter] = useState<string>('TODAS');
+  const [dispensaPage, setDispensaPage] = useState(1);
+  const [pagedDispensas, setPagedDispensas] = useState<DispensaSptfRecord[]>([]);
+  const [pagedDispensaTotal, setPagedDispensaTotal] = useState(0);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
+
+  useEffect(() => {
+    let cancelled = false;
+    const constraints: any[] = [orderBy('data', 'desc'), where('competencia', '==', selectedMonth)];
+    if (selectedCanteiro !== 'TODOS') constraints.push(where('employeeSede', '==', selectedCanteiro));
+    if (statusFilter !== 'TODOS') constraints.push(where('status', '==', statusFilter));
+    const search = debouncedSearchTerm.trim().toUpperCase();
+    if (search) constraints.push(where('matricula', '==', search));
+
+    setIsPageLoading(true);
+    dbService.getCollectionPage('dispensas_sptf', dispensaPage, 50, constraints)
+      .then((result) => {
+        if (cancelled) return;
+        setPagedDispensas(result.snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id, numeroGuia: data.numeroGuia || '', matricula: data.matricula || '', nome: data.nome || '',
+            saram: data.saram || data.matricula || '', secaoCanteiro: data.secaoCanteiro || '', data: data.data || '',
+            horarioInicio: data.horarioInicio || '', horarioFim: data.horarioFim || '', totalHoras: Number(data.totalHoras || 0),
+            motivo: data.motivo || '', observacoes: data.observacoes || '', emitidoPorNome: data.emitidoPorNome || '',
+            emitidoPorEmail: data.emitidoPorEmail || '', emitidoEm: data.emitidoEm || '', lancamentoId: data.lancamentoId || '',
+            status: data.status || 'EMITIDA',
+          } as DispensaSptfRecord;
+        }));
+        setPagedDispensaTotal(result.total);
+        setIsPageLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) { setPagedDispensas([]); setPagedDispensaTotal(0); setIsPageLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, [dispensaPage, selectedMonth, selectedCanteiro, statusFilter, debouncedSearchTerm]);
+
+  useEffect(() => setDispensaPage(1), [selectedMonth, selectedCanteiro, statusFilter, debouncedSearchTerm]);
 
   // 6. Modal de Visualização de Guia
   const [viewingDispensa, setViewingDispensa] = useState<DispensaSptfRecord | null>(null);
@@ -222,7 +263,7 @@ export const DispensasFaltasManagement: React.FC<DispensasFaltasManagementProps>
   // TRATAMENTO DOS DADOS: DISPENSAS
   // -------------------------------------------------------------
   const filteredDispensas = useMemo(() => {
-    return dispensas.filter((d) => {
+    return pagedDispensas.filter((d) => {
       // Filtro por Canteiro
       if (selectedCanteiro !== 'TODOS') {
         const dCanteiro = (d.secaoCanteiro || '').toUpperCase();
@@ -252,7 +293,7 @@ export const DispensasFaltasManagement: React.FC<DispensasFaltasManagementProps>
 
       return true;
     });
-  }, [dispensas, selectedCanteiro, statusFilter, searchTerm]);
+  }, [pagedDispensas, selectedCanteiro, statusFilter, searchTerm]);
 
   // Estatísticas de Dispensas
   const dispensasStats = useMemo(() => {
@@ -855,6 +896,14 @@ export const DispensasFaltasManagement: React.FC<DispensasFaltasManagementProps>
 
   return (
     <div className="space-y-6 pb-12 animate-fadeIn">
+      <div className="flex items-center justify-between text-xs text-slate-400">
+        <span>{isPageLoading ? 'Carregando dispensas...' : `${pagedDispensaTotal.toLocaleString('pt-BR')} registros`}</span>
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={dispensaPage <= 1} onClick={() => setDispensaPage((page) => page - 1)} className="rounded border px-2 py-1 disabled:opacity-40">Anterior</button>
+          <span>Página {dispensaPage} de {Math.max(1, Math.ceil(pagedDispensaTotal / 50))}</span>
+          <button type="button" disabled={dispensaPage >= Math.max(1, Math.ceil(pagedDispensaTotal / 50))} onClick={() => setDispensaPage((page) => page + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Próxima</button>
+        </div>
+      </div>
       {/* 1. CABEÇALHO DO MÓDULO E CONTROLES DE PERÍODO */}
       <div className={`p-4 sm:p-6 rounded-xl border ${isDark ? 'bg-[#16243D] border-[#243756]' : 'bg-white border-slate-200'} shadow-sm`}>
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
