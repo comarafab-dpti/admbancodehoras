@@ -1,7 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { UnidadeOrganizacional } from '@/src/shared/types';
-import { gerarSugestaoCodigoSetor } from '@/src/shared/services/setorService';
-import { X, Layers, AlertCircle, CheckCircle2, Building, Tag, Info } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { UnidadeOrganizacional, TipoUnidadeOrganizacional, Employee } from '@/src/shared/types';
+import { gerarSugestaoCodigoUO, setorService } from '@/src/shared/services/setorService';
+import { 
+  X, 
+  Layers, 
+  AlertCircle, 
+  CheckCircle2, 
+  Building, 
+  Tag, 
+  Info, 
+  ShieldAlert, 
+  Users, 
+  GitBranch, 
+  Warehouse 
+} from 'lucide-react';
 import { Button } from '@/src/shared/components/ui/Button';
 
 interface SetorFormModalProps {
@@ -11,6 +23,10 @@ interface SetorFormModalProps {
   editingSetor: UnidadeOrganizacional | null;
   uosPrincipais: UnidadeOrganizacional[];
   setoresExistentes: UnidadeOrganizacional[];
+  todasUOs?: UnidadeOrganizacional[];
+  employees?: Employee[];
+  initialTipo?: TipoUnidadeOrganizacional;
+  initialPai?: string;
   theme?: 'dark' | 'light';
 }
 
@@ -21,10 +37,16 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
   editingSetor,
   uosPrincipais,
   setoresExistentes,
+  todasUOs = [],
+  employees = [],
+  initialTipo,
+  initialPai,
   theme = 'dark'
 }) => {
   const isDark = theme === 'dark';
 
+  // Campos do formulário
+  const [tipo, setTipo] = useState<TipoUnidadeOrganizacional>('SETOR');
   const [nome, setNome] = useState('');
   const [siglaExibicao, setSiglaExibicao] = useState('');
   const [codigo, setCodigo] = useState('');
@@ -37,9 +59,26 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Inicializa o formulário com dados do setor em edição ou valores padrão
+  // Lista unificada de todas as UOs existentes para validação de unicidade
+  const catalogoCompleto = useMemo(() => {
+    const map = new Map<string, UnidadeOrganizacional>();
+    todasUOs.forEach((u) => map.set(u.codigo.toUpperCase(), u));
+    uosPrincipais.forEach((u) => map.set(u.codigo.toUpperCase(), u));
+    setoresExistentes.forEach((u) => map.set(u.codigo.toUpperCase(), u));
+    return Array.from(map.values());
+  }, [todasUOs, uosPrincipais, setoresExistentes]);
+
+  // UOs elegíveis para serem Pai de um Setor (apenas SEDE, DACO ou DECO)
+  const paisElegiveis = useMemo(() => {
+    return catalogoCompleto.filter(
+      (u) => (u.tipo === 'SEDE' || u.tipo === 'DACO' || u.tipo === 'DECO') && u.codigo !== 'NAO_CLASSIFICADO'
+    );
+  }, [catalogoCompleto]);
+
+  // Inicializa o formulário com dados da UO em edição ou valores padrão
   useEffect(() => {
     if (editingSetor) {
+      setTipo(editingSetor.tipo || 'SETOR');
       setNome(editingSetor.nome || '');
       setSiglaExibicao(editingSetor.siglaExibicao || '');
       setCodigo(editingSetor.codigo || '');
@@ -49,42 +88,83 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
       setAtiva(typeof editingSetor.ativa === 'boolean' ? editingSetor.ativa : true);
       setIsCodigoManual(true);
     } else {
+      const tipoPadrao = initialTipo || 'SETOR';
+      setTipo(tipoPadrao);
       setNome('');
       setSiglaExibicao('');
       setCodigo('');
-      setPai(uosPrincipais[0]?.codigo || 'SEDE_BE');
-      setSedeOuCanteiroPadrao(uosPrincipais[0]?.sedeOuCanteiroPadrao || 'BE');
+      const defaultPai = initialPai || paisElegiveis[0]?.codigo || 'SEDE_BE';
+      setPai(defaultPai);
+      const paiObj = paisElegiveis.find((p) => p.codigo === defaultPai);
+      setSedeOuCanteiroPadrao(paiObj?.sedeOuCanteiroPadrao || 'BE');
       setDescricao('');
       setAtiva(true);
       setIsCodigoManual(false);
     }
     setErrorMessage(null);
-  }, [editingSetor, isOpen, uosPrincipais]);
+  }, [editingSetor, isOpen, initialTipo, initialPai, paisElegiveis]);
+
+  // Validação em tempo real de código único (Gap 5)
+  const codigoTrim = (codigo || '').trim().toUpperCase();
+  const conflitoCodigo = useMemo(() => {
+    if (!codigoTrim) return null;
+    return catalogoCompleto.find((u) => {
+      const isSelf = editingSetor && u.codigo.toUpperCase() === editingSetor.codigo.toUpperCase();
+      return !isSelf && u.codigo.toUpperCase() === codigoTrim;
+    });
+  }, [codigoTrim, catalogoCompleto, editingSetor]);
+
+  const isCodigoInvalidoOuDuplicado = Boolean(conflitoCodigo);
+
+  // Verificação de dependências em edição (Gap 4)
+  const dependenciasEdicao = useMemo(() => {
+    if (!editingSetor) return { temDependencias: false, totalFilhos: 0, totalColaboradores: 0, filhos: [] };
+    return setorService.verificarDependenciasUO(editingSetor.codigo, employees, catalogoCompleto);
+  }, [editingSetor, employees, catalogoCompleto]);
 
   if (!isOpen) return null;
 
   // Atualiza sede padrão automaticamente quando o usuário altera a UO pai
   const handlePaiChange = (novoPai: string) => {
     setPai(novoPai);
-    const uoPai = uosPrincipais.find((u) => u.codigo === novoPai);
+    const uoPai = paisElegiveis.find((u) => u.codigo === novoPai);
     if (uoPai?.sedeOuCanteiroPadrao) {
       setSedeOuCanteiroPadrao(uoPai.sedeOuCanteiroPadrao);
     }
   };
 
-  // Sugestão automática de código quando nome ou sigla mudam (apenas em criação sem código manual)
+  // Mudança de tipo com aplicação de regras condicionais (Gap 3)
+  const handleTipoChange = (novoTipo: TipoUnidadeOrganizacional) => {
+    setTipo(novoTipo);
+    if (novoTipo === 'SETOR') {
+      if (!pai || pai === 'COMARA') {
+        const defaultPai = paisElegiveis[0]?.codigo || 'SEDE_BE';
+        setPai(defaultPai);
+        const uoPai = paisElegiveis.find((u) => u.codigo === defaultPai);
+        if (uoPai?.sedeOuCanteiroPadrao) setSedeOuCanteiroPadrao(uoPai.sedeOuCanteiroPadrao);
+      }
+    } else {
+      setPai('COMARA');
+    }
+
+    if (!isCodigoManual && !editingSetor) {
+      setCodigo(gerarSugestaoCodigoUO(novoTipo, siglaExibicao, nome));
+    }
+  };
+
+  // Sugestão automática de código conforme convenção
   const handleSiglaChange = (val: string) => {
     const uppercase = val.toUpperCase();
     setSiglaExibicao(uppercase);
     if (!isCodigoManual && !editingSetor) {
-      setCodigo(gerarSugestaoCodigoSetor(uppercase, nome));
+      setCodigo(gerarSugestaoCodigoUO(tipo, uppercase, nome));
     }
   };
 
   const handleNomeChange = (val: string) => {
     setNome(val);
     if (!isCodigoManual && !editingSetor && !siglaExibicao) {
-      setCodigo(gerarSugestaoCodigoSetor('', val));
+      setCodigo(gerarSugestaoCodigoUO(tipo, '', val));
     }
   };
 
@@ -94,50 +174,57 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
 
     const nomeTrim = nome.trim();
     const siglaTrim = siglaExibicao.trim().toUpperCase();
-    const codigoTrim = (codigo.trim() || gerarSugestaoCodigoSetor(siglaTrim, nomeTrim)).toUpperCase();
+    const codigoFinal = (codigo.trim() || gerarSugestaoCodigoUO(tipo, siglaTrim, nomeTrim)).toUpperCase();
 
     if (!nomeTrim) {
-      setErrorMessage('Por favor, informe o nome do setor.');
+      setErrorMessage('Por favor, informe o nome da Unidade Organizacional.');
       return;
     }
 
     if (!siglaTrim) {
-      setErrorMessage('Por favor, informe a sigla de exibição do setor.');
+      setErrorMessage('Por favor, informe a sigla de exibição.');
       return;
     }
 
-    if (!codigoTrim) {
-      setErrorMessage('Por favor, informe um código único para o setor.');
+    if (!codigoFinal) {
+      setErrorMessage('Por favor, informe um código único de identificação.');
       return;
     }
 
-    // Verificar colisão de código com outros setores
-    const conflito = setoresExistentes.find(
-      (s) => s.codigo === codigoTrim && (!editingSetor || editingSetor.codigo !== codigoTrim)
-    );
-    if (conflito) {
-      setErrorMessage(`O código "${codigoTrim}" já está em uso pelo setor "${conflito.nome}". Escolha outro código.`);
+    // Validação de tipo SETOR com UO Pai obrigatória
+    if (tipo === 'SETOR' && (!pai || pai === 'COMARA')) {
+      setErrorMessage('Para unidades do tipo SETOR, é obrigatório selecionar uma UO Pai (SEDE, DACO ou DECO).');
       return;
     }
 
-    const setorAtualizado: UnidadeOrganizacional = {
-      codigo: codigoTrim,
+    // Bloqueio de código duplicado
+    if (isCodigoInvalidoOuDuplicado) {
+      setErrorMessage(
+        `O código "${codigoFinal}" já está em uso pela UO "${conflitoCodigo?.nome}". Escolha outro código.`
+      );
+      return;
+    }
+
+    const paiFinal = tipo === 'SETOR' ? pai : 'COMARA';
+
+    const uoAtualizada: UnidadeOrganizacional = {
+      codigo: codigoFinal,
       nome: nomeTrim,
       siglaExibicao: siglaTrim,
-      tipo: 'SETOR',
-      pai,
-      sedeOuCanteiroPadrao,
+      tipo,
+      pai: paiFinal,
+      sedeOuCanteiroPadrao: (sedeOuCanteiroPadrao || 'BE').trim().toUpperCase(),
       ativa,
       descricao: descricao.trim()
     };
 
     setIsSubmitting(true);
     try {
-      await onSave(setorAtualizado, editingSetor?.codigo);
+      await onSave(uoAtualizada, editingSetor?.codigo);
       onClose();
     } catch (err: any) {
-      console.error('Erro ao salvar setor:', err);
-      setErrorMessage(err?.message || 'Falha ao salvar o setor. Tente novamente.');
+      console.error('Erro ao salvar UO:', err);
+      setErrorMessage(err?.message || 'Falha ao salvar a Unidade Organizacional. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -160,12 +247,12 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-base sm:text-lg">
-                {editingSetor ? 'Editar Setor / Divisão' : 'Cadastrar Novo Setor'}
+                {editingSetor ? `Editar UO: ${editingSetor.siglaExibicao}` : 'Cadastrar Nova Unidade Organizacional (UO)'}
               </h3>
               <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 {editingSetor 
-                  ? `Renomeie, edite ou altere o vínculo de ${editingSetor.siglaExibicao}` 
-                  : 'Vincule uma nova seção ou divisão à Unidade Organizacional correspondente'}
+                  ? `Altere as propriedades ou vínculos da unidade ${editingSetor.codigo}` 
+                  : 'Crie uma nova SEDE, DACO, DECO ou SETOR vinculado na estrutura COMARA'}
               </p>
             </div>
           </div>
@@ -191,17 +278,74 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
             </div>
           )}
 
+          {/* Aviso de dependências em caso de edição */}
+          {editingSetor && dependenciasEdicao.temDependencias && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">UO com dependências ativas: </span>
+                <span>
+                  {dependenciasEdicao.totalFilhos} UO(s) filha(s) vinculada(s) e {dependenciasEdicao.totalColaboradores} colaborador(es) associado(s). A exclusão física desta UO está bloqueada por segurança.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Gap 3: Seletor de Tipo de UO (SEDE, DACO, DECO, SETOR) */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+              Tipo de Unidade Organizacional <span className="text-red-400">*</span>
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(
+                [
+                  { id: 'SETOR', label: 'SETOR', desc: 'Subdivisão de UO' },
+                  { id: 'DECO', label: 'DECO', desc: 'Canteiro de Obras' },
+                  { id: 'DACO', label: 'DACO', desc: 'Destacamento Apoio' },
+                  { id: 'SEDE', label: 'SEDE', desc: 'Sede Administrativa' }
+                ] as const
+              ).map((item) => {
+                const isSelected = tipo === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleTipoChange(item.id)}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? 'bg-blue-600/15 border-blue-500 text-blue-400 shadow-xs ring-1 ring-blue-500/30'
+                        : isDark
+                        ? 'bg-[#0E1A2E] border-[#243756] text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs font-bold tracking-wide">{item.label}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{item.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Nome do Setor */}
+            {/* Nome da UO */}
             <div className="sm:col-span-2 space-y-1">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                Nome do Setor / Divisão <span className="text-red-400">*</span>
+                Nome da UO <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={nome}
                 onChange={(e) => handleNomeChange(e.target.value)}
-                placeholder="Ex: Seção de Aquisições, Divisão de Logística"
+                placeholder={
+                  tipo === 'SETOR'
+                    ? 'Ex: Seção de Aquisições, Divisão de Logística'
+                    : tipo === 'DECO'
+                    ? 'Ex: Destacamento de Engenharia de Coari'
+                    : tipo === 'DACO'
+                    ? 'Ex: Destacamento de Apoio de Manaus'
+                    : 'Ex: Sede Administrativa de Belém'
+                }
                 className={`w-full px-3.5 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
                   isDark ? 'bg-[#0E1A2E] border-[#243756] text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
                 }`}
@@ -218,7 +362,9 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
                 type="text"
                 value={siglaExibicao}
                 onChange={(e) => handleSiglaChange(e.target.value)}
-                placeholder="Ex: SAQ, PMAC"
+                placeholder={
+                  tipo === 'SETOR' ? 'Ex: SAQ, PMAC' : tipo === 'DECO' ? 'Ex: DECO-KO' : tipo === 'DACO' ? 'Ex: DACO-MN' : 'Ex: SEDE-BE'
+                }
                 maxLength={15}
                 className={`w-full px-3.5 py-2 rounded-xl text-sm font-semibold border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors uppercase ${
                   isDark ? 'bg-[#0E1A2E] border-[#243756] text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
@@ -229,28 +375,46 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Unidade Organizacional Pai (Vínculo) */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                <span>Vincular à Unidade (Pai) <span className="text-red-400">*</span></span>
-              </label>
-              <select
-                value={pai}
-                onChange={(e) => handlePaiChange(e.target.value)}
-                className={`w-full px-3.5 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                  isDark ? 'bg-[#0E1A2E] border-[#243756] text-white' : 'bg-white border-slate-300 text-slate-900'
-                }`}
-              >
-                {uosPrincipais.map((uo) => (
-                  <option key={uo.codigo} value={uo.codigo}>
-                    {uo.siglaExibicao} • {uo.nome}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[11px] text-slate-500 block">
-                Define a qual quartel ou destacamento este setor pertence hierarquicamente.
-              </span>
-            </div>
+            {/* UO Pai: Obrigatório para SETOR, Oculto para SEDE/DACO/DECO (Gap 3) */}
+            {tipo === 'SETOR' ? (
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                  <span>UO Pai Vinculada <span className="text-red-400">*</span></span>
+                </label>
+                <select
+                  value={pai}
+                  onChange={(e) => handlePaiChange(e.target.value)}
+                  className={`w-full px-3.5 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                    isDark ? 'bg-[#0E1A2E] border-[#243756] text-white' : 'bg-white border-slate-300 text-slate-900'
+                  }`}
+                  required
+                >
+                  {paisElegiveis.map((uo) => (
+                    <option key={uo.codigo} value={uo.codigo}>
+                      [{uo.tipo}] {uo.siglaExibicao} • {uo.nome}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-slate-500 block">
+                  Selecione a SEDE, DACO ou DECO responsável por este setor.
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Vínculo Institucional
+                </label>
+                <div className={`px-3.5 py-2 rounded-xl text-sm border flex items-center gap-2 ${
+                  isDark ? 'bg-[#0E1A2E]/50 border-[#243756] text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
+                }`}>
+                  <GitBranch className="w-4 h-4 text-blue-400" />
+                  <span className="font-semibold text-xs">Vinculação direta à Direção Geral (COMARA)</span>
+                </div>
+                <span className="text-[11px] text-slate-500 block">
+                  Unidade de Nível 2 com subordinação direta à COMARA.
+                </span>
+              </div>
+            )}
 
             {/* Sede Territorial Padrão */}
             <div className="space-y-1">
@@ -268,12 +432,12 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
                 }`}
               />
               <span className="text-[11px] text-slate-500 block">
-                Bigrama territorial onde este setor opera fisicamente (ex: BE, MN, KO).
+                Bigrama territorial oficial de operação física (ex: BE, MN, KO, FB).
               </span>
             </div>
           </div>
 
-          {/* Código de Identificação Técnico */}
+          {/* Código de Identificação Técnico com Validação em Tempo Real (Gap 5) */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -289,22 +453,44 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
                 </button>
               )}
             </div>
-            <input
-              type="text"
-              value={codigo}
-              onChange={(e) => {
-                setIsCodigoManual(true);
-                setCodigo(e.target.value.toUpperCase());
-              }}
-              placeholder="Ex: SETOR_SAQ"
-              className={`w-full px-3.5 py-2 rounded-xl text-sm font-mono border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors uppercase ${
-                isDark ? 'bg-[#0E1A2E] border-[#243756] text-white' : 'bg-white border-slate-300 text-slate-900'
-              }`}
-              required
-            />
-            <span className="text-[11px] text-slate-500 block">
-              Usado para cruzamento com lotações nos relatórios e importações de dados.
-            </span>
+            <div className="relative">
+              <input
+                type="text"
+                value={codigo}
+                onChange={(e) => {
+                  setIsCodigoManual(true);
+                  setCodigo(e.target.value.toUpperCase());
+                }}
+                placeholder={
+                  tipo === 'SEDE' ? 'Ex: SEDE_BE' : tipo === 'DACO' ? 'Ex: DACO_MN' : tipo === 'DECO' ? 'Ex: DECO_KO' : 'Ex: SETOR_SAQ'
+                }
+                className={`w-full px-3.5 py-2 rounded-xl text-sm font-mono border focus:outline-none transition-colors uppercase ${
+                  isCodigoInvalidoOuDuplicado
+                    ? 'border-red-500 bg-red-500/10 text-red-300 focus:ring-2 focus:ring-red-500'
+                    : isDark
+                    ? 'bg-[#0E1A2E] border-[#243756] text-white focus:ring-2 focus:ring-blue-500'
+                    : 'bg-white border-slate-300 text-slate-900 focus:ring-2 focus:ring-blue-500'
+                }`}
+                required
+              />
+              {isCodigoInvalidoOuDuplicado ? (
+                <AlertCircle className="w-4 h-4 text-red-400 absolute right-3 top-2.5 pointer-events-none" />
+              ) : codigoTrim ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute right-3 top-2.5 pointer-events-none" />
+              ) : null}
+            </div>
+
+            {/* Mensagem de erro em tempo real para código duplicado */}
+            {isCodigoInvalidoOuDuplicado ? (
+              <div className="flex items-center gap-1.5 text-xs text-red-400 font-medium pt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Este código já está em uso. Escolha outro. ({conflitoCodigo?.nome})</span>
+              </div>
+            ) : (
+              <span className="text-[11px] text-slate-500 block">
+                Convenção: {tipo === 'SEDE' ? 'SEDE_XX' : tipo === 'DACO' ? 'DACO_XX' : tipo === 'DECO' ? 'DECO_XX' : 'SETOR_NOME'} (chave primária da UO).
+              </span>
+            )}
           </div>
 
           {/* Descrição / Atribuições */}
@@ -316,7 +502,7 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               rows={2}
-              placeholder="Ex: Responsável pelas aquisições, almoxarifado, contratos e suprimentos da Sede Belém."
+              placeholder="Ex: Responsável pelas atividades de infraestrutura e apoio operacional."
               className={`w-full px-3.5 py-2 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
                 isDark ? 'bg-[#0E1A2E] border-[#243756] text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
               }`}
@@ -328,21 +514,21 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
             isDark ? 'bg-[#0E1A2E] border-[#243756]' : 'bg-slate-50 border-slate-200'
           }`}>
             <div>
-              <div className="font-semibold text-sm">Status do Setor</div>
+              <div className="font-semibold text-sm">Status da Unidade</div>
               <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {ativa ? 'Setor ativo e disponível para vinculação de colaboradores' : 'Setor inativo (mantém histórico contábil)'}
+                {ativa ? 'Unidade ativa e disponível para alocação de pessoal' : 'Unidade inativa (mantém histórico contábil)'}
               </div>
             </div>
             <button
               type="button"
               onClick={() => setAtiva(!ativa)}
-              className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+              className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors cursor-pointer active:scale-[0.98] ${
                 ativa
                   ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                   : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
               }`}
             >
-              {ativa ? 'ATIVO' : 'INATIVO'}
+              {ativa ? 'ATIVA' : 'INATIVA'}
             </button>
           </div>
 
@@ -359,10 +545,10 @@ export const SetorFormModal: React.FC<SetorFormModalProps> = ({
             <Button
               type="submit"
               variant="primary"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isCodigoInvalidoOuDuplicado || !nome.trim() || !siglaExibicao.trim() || (tipo === 'SETOR' && (!pai || pai === 'COMARA'))}
               isLoading={isSubmitting}
             >
-              {editingSetor ? 'Salvar Alterações' : 'Cadastrar Setor'}
+              {editingSetor ? 'Salvar Alterações' : 'Cadastrar UO'}
             </Button>
           </div>
         </form>

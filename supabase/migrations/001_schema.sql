@@ -172,28 +172,57 @@ create index if not exists idx_admin_users_data on public.admin_users using gin 
 create index if not exists idx_admin_users_status on public.admin_users ((data->>'status'));
 create index if not exists idx_admin_users_canteiro on public.admin_users ((data->>'canteiroSede'));
 
+create index if not exists idx_canteiros_obras_data on public.canteiros_obras using gin (data);
+create index if not exists idx_canteiros_obras_status on public.canteiros_obras ((data->>'status'));
+create index if not exists idx_canteiros_obras_codigo on public.canteiros_obras ((data->>'codigo'));
+
+create index if not exists idx_unidades_organizacionais_data on public.unidades_organizacionais using gin (data);
+create index if not exists idx_unidades_organizacionais_codigo on public.unidades_organizacionais ((data->>'codigo'));
+create index if not exists idx_unidades_organizacionais_status on public.unidades_organizacionais ((data->>'ativa'));
+create index if not exists idx_unidades_organizacionais_tipo on public.unidades_organizacionais ((data->>'tipo'));
+create index if not exists idx_unidades_organizacionais_pai on public.unidades_organizacionais ((data->>'pai'));
+
 create index if not exists idx_logs_auditoria_data on public.logs_auditoria using gin (data);
 create index if not exists idx_logs_auditoria_ts on public.logs_auditoria ((data->>'timestamp'));
 create index if not exists idx_logs_acesso_ts on public.logs_acesso ((data->>'timestamp'));
 
 -- ============================================================================
 -- REALTIME (Supabase Realtime para substituir onSnapshot do Firestore)
+-- Bloco idempotente: não falha se a tabela já for membro da publicação (Erro 42710)
 -- ============================================================================
-alter publication supabase_realtime add table public.colaboradores;
-alter publication supabase_realtime add table public.lancamentos;
-alter publication supabase_realtime add table public.dispensas_sptf;
-alter publication supabase_realtime add table public.contracheques;
-alter publication supabase_realtime add table public.insalubridade_records;
-alter publication supabase_realtime add table public.resumo_mensal;
-alter publication supabase_realtime add table public.competencias_controle;
-alter publication supabase_realtime add table public.canteiros_obras;
-alter publication supabase_realtime add table public.canteiros;
-alter publication supabase_realtime add table public.unidades_organizacionais;
-alter publication supabase_realtime add table public.colaboradores_auth;
-alter publication supabase_realtime add table public.admin_users;
-alter publication supabase_realtime add table public.usuarios_sistema;
-alter publication supabase_realtime add table public.system_config;
-alter publication supabase_realtime add table public.institution_settings;
-alter publication supabase_realtime add table public.system_logs;
-alter publication supabase_realtime add table public.logs_auditoria;
-alter publication supabase_realtime add table public.logs_acesso;
+do $$
+declare
+  t text;
+  tabelas text[] := array[
+    'colaboradores',
+    'lancamentos',
+    'dispensas_sptf',
+    'contracheques',
+    'insalubridade_records',
+    'resumo_mensal',
+    'competencias_controle',
+    'canteiros_obras',
+    'canteiros',
+    'unidades_organizacionais',
+    'colaboradores_auth',
+    'admin_users',
+    'usuarios_sistema',
+    'system_config',
+    'institution_settings',
+    'system_logs',
+    'logs_auditoria',
+    'logs_acesso'
+  ];
+begin
+  foreach t in array tabelas loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
+

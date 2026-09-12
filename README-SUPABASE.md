@@ -31,19 +31,29 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
 
 ## Passo a passo para ativar
 
-1. **Esquema**: no Supabase Dashboard > SQL Editor, execute:
-   - `supabase/migrations/001_schema.sql`
-   - `supabase/migrations/002_rls.sql`
-2. **Autenticação** (Authentication):
-   - Ative o provedor **Google** (Authentication > Providers > Google) com o
-     client ID/secret do seu Google Cloud.
-   - Em **Authentication > URL Configuration**, cadastre em *Site URL* e
-     *Redirect URLs* a URL onde o sistema roda (ex.: `https://seudominio/admin`
-     e, em desenvolvimento, a URL do preview).
-   - Para o acesso mestre de contingência ("Acessar Painel" com conta
-     `coari.comara@gmail.com` / `comarafab@gmail.com`), crie em
-     **Authentication > Users** um usuário **e-mail/senha** (Auto Confirm ON)
-     com esse e-mail e uma senha forte. A senha é digitada no login mestre.
+1. **Esquema e RLS (Banco de Dados)**:
+   Todos os scripts são **100% idempotentes** (com checagem `if not exists` em tabelas/índices, `drop policy if exists` em políticas RLS e verificação em `pg_publication_tables` para o Realtime). Podem ser executados repetidas vezes sem risco de erro `42710` ("already member of publication" ou "policy already exists").
+
+   No Supabase Dashboard > **SQL Editor**, execute na ordem:
+   1. `supabase/migrations/001_schema.sql` (Estrutura de tabelas e índices)
+   2. `supabase/migrations/002_rls.sql` (Políticas de segurança RLS)
+   3. `supabase/migrations/004_auth_claims_trigger.sql` (Triggers de Custom Claims e RBAC)
+   4. `supabase/migrations/005_hardening_final.sql` (Hardening final contra todos os avisos do Linter)
+
+   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql` e `005_hardening_final.sql`).*
+
+   **Verificação de Saúde (Sanity Check):**
+   Após executar as migrações, execute o script `scripts/check-supabase-setup.sql` no SQL Editor para confirmar que todas as tabelas, RLS, políticas de segurança, hardening contra avisos do Linter e triggers de Custom Claims estão ativos.
+
+2. **Autenticação (Supabase Auth com E-mail e Senha + Google OAuth)**:
+   - **Login Nativo por E-mail/Senha**:
+     - Cada usuário (administrador ou gestor de RH) possui login em `auth.users` via e-mail e senha.
+     - Para colaboradores (acesso ao extrato/auditoria), utiliza-se o e-mail sintético `{matricula}@comara.local` com senha inicial padrão (ex.: data de nascimento `DDMMAAAA`) e a flag `must_change_password: true`. No primeiro acesso, o sistema detecta a flag e solicita a definição de uma nova senha pessoal.
+     - O perfil RBAC (`nivelAcesso`, `role`, `canteiroSede`, `status`, `ativo`) é mantido na tabela `admin_users` e sincronizado automaticamente via triggers (`004_auth_claims_trigger.sql`) para o `raw_app_meta_data` do token JWT. As políticas RLS consom esses dados a custo zero (0ms) sem consultas adicionais ao banco.
+   - **Google Workspace OAuth (Opcional/Alternativo)**:
+     - Ative o provedor **Google** (Authentication > Providers > Google) se desejar permitir acesso com a conta Google corporativa.
+     - Em **Authentication > URL Configuration**, cadastre em *Site URL* e *Redirect URLs* a URL onde o sistema roda.
+   - Para o acesso mestre de contingência (`coari.comara@gmail.com` / `comarafab@gmail.com`), crie o usuário em **Authentication > Users** com uma senha forte.
 3. **Variáveis de ambiente** (Settings > API):
    - `VITE_SUPABASE_URL` = Project URL
    - `VITE_SUPABASE_ANON_KEY` = anon public key

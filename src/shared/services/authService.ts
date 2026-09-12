@@ -2,36 +2,56 @@ import { doc, getDoc, setDoc, addDoc, collection, query, orderBy, limit, onSnaps
 import { supabase } from './supabase';
 import { EmployeeAuth, AccessLog, AccessLogType, AdminUser, AdminRole, AuthSession } from '../types';
 
-export function getAuthErrorMessage(errorCode: string, defaultMessage?: string): string {
-  switch (errorCode) {
-    case 'invalid_credentials':
-    case 'wrong_password':
-    case 'email_not_confirmed':
-      return 'E-mail ou senha incorretos, ou e-mail ainda não confirmado no Supabase Auth.';
-    case 'user_disabled':
-      return 'Este usuário foi desativado na autenticação.';
-    case 'over_request_rate_limit':
-    case 'too_many_requests':
-      return 'Acesso temporariamente bloqueado devido a muitas tentativas inválidas. Tente novamente mais tarde.';
-    case 'invalid_email':
-      return 'Formato de e-mail inválido.';
-    case 'provider_disabled':
-      return 'O provedor de autenticação não está habilitado no Supabase (Authentication > Providers).';
-    case 'email_exists':
-      return 'Este e-mail já está cadastrado na autenticação.';
-    case 'network_request_failed':
-      return 'Falha de conexão com os servidores de autenticação. Verifique sua conexão com a internet.';
-    case 'popup_closed_by_user':
-      return 'A janela de autenticação foi fechada antes da conclusão.';
-    case 'unauthorized_domain': {
-      const host = typeof window !== 'undefined' ? window.location.origin : '';
-      return host
-        ? `A URL "${host}" não está na lista de Redirect URLs do Supabase Authentication. Adicione-a em Authentication > URL Configuration.`
-        : 'URL de redirecionamento não autorizada na configuração do Supabase Auth.';
-    }
-    default:
-      return defaultMessage || 'Falha na autenticação.';
+export function getAuthErrorMessage(errorCodeOrMessage: string, defaultMessage?: string): string {
+  const norm = (errorCodeOrMessage || '').toLowerCase();
+  if (norm.includes('invalid login credentials') || norm.includes('invalid_credentials') || norm.includes('wrong_password') || norm === 'invalid_credentials') {
+    return 'E-mail (ou matrícula) ou senha incorretos.';
   }
+  if (norm.includes('email not confirmed') || norm.includes('email_not_confirmed')) {
+    return 'E-mail cadastrado, mas ainda não confirmado no Supabase Auth. Verifique seu e-mail ou no painel do Supabase confirme o usuário.';
+  }
+  if (norm.includes('user not found') || norm.includes('user_not_found')) {
+    return 'Usuário não localizado no sistema. Verifique a credencial digitada ou procure a gestão de RH.';
+  }
+  if (norm.includes('too many requests') || norm.includes('over_request_rate_limit') || norm.includes('too_many_requests')) {
+    return 'Acesso temporariamente bloqueado devido a muitas tentativas inválidas. Aguarde alguns instantes.';
+  }
+  if (norm.includes('password should be at least')) {
+    return 'A senha deve conter no mínimo 6 caracteres.';
+  }
+  if (norm.includes('user_disabled')) {
+    return 'Este usuário foi desativado no sistema.';
+  }
+  if (norm.includes('invalid_email') || norm.includes('invalid email')) {
+    return 'Formato de e-mail ou matrícula inválido.';
+  }
+  if (norm.includes('network_request_failed') || norm.includes('failed to fetch')) {
+    return 'Falha de conexão com os servidores de autenticação. Verifique sua conexão com a internet.';
+  }
+  if (norm.includes('popup_closed_by_user')) {
+    return 'A janela de autenticação foi fechada antes da conclusão.';
+  }
+  if (norm.includes('unauthorized_domain') || norm.includes('redirect_uri')) {
+    const host = typeof window !== 'undefined' ? window.location.origin : '';
+    return host
+      ? `A URL "${host}" não está na lista de Redirect URLs do Supabase Authentication. Adicione-a em Authentication > URL Configuration.`
+      : 'URL de redirecionamento não autorizada na configuração do Supabase Auth.';
+  }
+  return defaultMessage || 'Falha na autenticação. Verifique suas credenciais.';
+}
+
+/**
+ * Normaliza o identificador de login:
+ * Se contiver '@', assume e-mail corporativo.
+ * Se for uma matrícula (apenas números ou alfanumérico sem '@'), converte para e-mail sintético '{matricula}@comara.local'.
+ */
+export function normalizeLoginIdentifier(identifier: string): string {
+  const clean = (identifier || '').trim().toLowerCase();
+  if (!clean) return '';
+  if (clean.includes('@')) {
+    return clean;
+  }
+  return `${clean}@comara.local`;
 }
 
 
@@ -175,7 +195,45 @@ export async function processAuthenticatedUser(authUser: {
     console.warn('[Auth] Erro ao consultar documento em admin_users:', err);
   }
 
-  // Se não existir, auto-cadastra. E-mail master cria o primeiro cadastro ativo
+  // Verificação especial para colaborador com e-mail sintético ({matricula}@comara.local)
+  const isSyntheticCollab = email.endsWith('@comara.local');
+  const syntheticMatricula = isSyntheticCollab ? email.replace('@comara.local', '').toUpperCase() : null;
+
+  if (syntheticMatricula) {
+    try {
+      const colabSnap = await getDoc(doc(null as any, COLLECTIONS.COLABORADORES, syntheticMatricula));
+      if (colabSnap.exists()) {
+        const colabData = colabSnap.data() as any;
+        const colabAdminDoc: AdminUser = {
+          id: email,
+          email,
+          nome: colabData.nome || authUser.displayName || `Colaborador ${syntheticMatricula}`,
+          cargo: colabData.cargo || 'Colaborador',
+          funcao: colabData.cargo || 'Colaborador',
+          role: 'AUDITOR' as AdminRole,
+          nivelAcesso: 'AUDITOR' as AdminRole,
+          status: 'ativo',
+          perfil: 'auditor',
+          foto: null,
+          sede: colabData.sedeCodigo || 'TODAS',
+          canteiroSede: colabData.sedeCodigo || 'TODAS',
+          ativo: true,
+          criadoEm: nowIso,
+          atualizadoEm: nowIso,
+        };
+        return {
+          status: 'ativo',
+          admin: colabAdminDoc,
+          isSuperAdmin: false,
+          message: `Bem-vindo(a), ${colabAdminDoc.nome}!`,
+        };
+      }
+    } catch (colabErr) {
+      console.warn('[Auth] Erro ao consultar dados de colaborador por matrícula:', colabErr);
+    }
+  }
+
+  // Se não existir em admin_users, auto-cadastra. E-mail master cria o primeiro cadastro ativo
   // como SUPER_ADMIN (bootstrap). Após criado, o perfil será lido EXCLUSIVAMENTE
   // do documento no banco.
   if (!adminDoc) {
@@ -464,8 +522,154 @@ export const authService = {
   },
 
   // -------------------------------------------------------------
-  // AUTENTICAÇÃO ADMINISTRATIVA — GOOGLE WORKSPACE (SUPABASE AUTH)
+  // AUTENTICAÇÃO ADMINISTRATIVA E COLABORADORES — SUPABASE AUTH
   // -------------------------------------------------------------
+
+  /**
+   * Login principal por E-mail ou Matrícula e Senha no Supabase Auth.
+   * - Suporta e-mails corporativos (@comara.mil.br, @gmail.com, etc.)
+   * - Suporta matrículas de colaboradores (sintético: {matricula}@comara.local)
+   * - Detecta flag 'must_change_password' para forçar troca no primeiro acesso
+   */
+  async signInWithEmailPassword(
+    identifier: string,
+    password: string
+  ): Promise<{
+    user: any;
+    processed: ProcessAuthResult;
+    mustChangePassword: boolean;
+  }> {
+    const rawId = (identifier || '').trim();
+    if (!rawId) {
+      throw new Error('Informe seu e-mail corporativo ou matrícula.');
+    }
+    if (!password) {
+      throw new Error('Informe a sua senha.');
+    }
+
+    const email = normalizeLoginIdentifier(rawId);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error || !data?.user) {
+      const msg = getAuthErrorMessage(error?.code || error?.message || '', error?.message);
+      throw new Error(msg);
+    }
+
+    const authUser = data.user;
+    const isSyntheticCollab = email.endsWith('@comara.local');
+    const matriculaFromEmail = isSyntheticCollab ? email.replace('@comara.local', '') : undefined;
+
+    const sessionUser = {
+      uid: authUser.id,
+      email: authUser.email || email,
+      displayName:
+        authUser.user_metadata?.full_name ||
+        authUser.user_metadata?.nome ||
+        (matriculaFromEmail ? `Colaborador ${matriculaFromEmail}` : email.split('@')[0]),
+      photoURL: authUser.user_metadata?.avatar_url || null,
+    };
+
+    const processed = await processAuthenticatedUser(sessionUser);
+    const mustChangePassword = Boolean(authUser.user_metadata?.must_change_password);
+
+    return {
+      user: sessionUser,
+      processed,
+      mustChangePassword,
+    };
+  },
+
+  /**
+   * Atualização de senha no Supabase Auth (primeiro acesso ou troca voluntária).
+   */
+  async updatePassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: {
+        must_change_password: false,
+      },
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error: getAuthErrorMessage(error.code || error.message, error.message),
+      };
+    }
+
+    return { success: true };
+  },
+
+  /**
+   * Envia e-mail de recuperação / redefinição de senha pelo Supabase Auth.
+   */
+  async resetPasswordForEmail(email: string): Promise<{ success: boolean; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Informe um endereço de e-mail válido para envio das instruções.' };
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: `${window.location.origin}/admin`,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error: getAuthErrorMessage(error.code || error.message, error.message),
+      };
+    }
+
+    return { success: true };
+  },
+
+  /**
+   * Criação de usuário com e-mail e senha no Supabase Auth.
+   * Usado na homologação ou pelo RH ao cadastrar gestor ou colaborador.
+   */
+  async signUpUser(options: {
+    email: string;
+    password?: string;
+    nome: string;
+    role?: AdminRole;
+    canteiroSede?: string;
+    mustChangePassword?: boolean;
+  }): Promise<{ user: any | null; error?: string }> {
+    const cleanEmail = normalizeLoginIdentifier(options.email);
+    const defaultPassword = options.password || 'Comara@123';
+
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: defaultPassword,
+      options: {
+        data: {
+          full_name: options.nome,
+          nome: options.nome,
+          nivel_acesso: options.role || 'NENHUM',
+          role: options.role || 'NENHUM',
+          canteiro_sede: options.canteiroSede || 'TODAS',
+          must_change_password: options.mustChangePassword ?? true,
+        },
+      },
+    });
+
+    if (error) {
+      return {
+        user: null,
+        error: getAuthErrorMessage(error.code || error.message, error.message),
+      };
+    }
+
+    return { user: data.user };
+  },
 
   /**
    * Login Google Workspace via Supabase Auth (OAuth por redirecionamento).

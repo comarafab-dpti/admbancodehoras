@@ -20,7 +20,8 @@ import {
   UserCheck,
   AlertCircle,
   Calendar,
-  Layers
+  Layers,
+  Power
 } from 'lucide-react';
 
 interface CanteirosManagementProps {
@@ -65,7 +66,7 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranch, setSelectedBranch] = useState<string>('TODAS');
-  const [selectedStatus, setSelectedStatus] = useState<string>('TODOS');
+  const [selectedStatus, setSelectedStatus] = useState<string>('ATIVO');
 
   // Modal: Add/Edit Canteiro
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,6 +148,17 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
   // Contadores dinâmicos reais baseados na coleção
   const activeCount = useMemo(() => sites.filter(isSiteActive).length, [sites]);
   const inactiveCount = useMemo(() => sites.filter((s) => !isSiteActive(s)).length, [sites]);
+
+  // Validação em tempo real de unicidade de código do canteiro
+  const formCodeTrim = formCode.trim().toUpperCase();
+  const isCanteiroCodeInUse = Boolean(
+    formCodeTrim &&
+      sites.some((s) => {
+        const c = (s.codigo || s.code || '').toUpperCase();
+        const isSelf = editingSite && (s.id === editingSite.id || (editingSite.codigo && editingSite.codigo.toUpperCase() === c));
+        return !isSelf && c === formCodeTrim;
+      })
+  );
 
   // Lista dinâmica de sedes presentes nos canteiros cadastrados
   const availableSedes = useMemo(() => {
@@ -257,6 +269,19 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
     const normCode = formCode.trim().toUpperCase() || (formName.trim().substring(0, 5).toUpperCase());
     const normSede = (formSedeCodigo.trim() || normCode.split('-')[0] || 'KO').toUpperCase();
 
+    // Validação de código único de canteiro em tempo real
+    const isCodeConflict = normCode && sites.some((s) => {
+      const c = (s.codigo || s.code || '').toUpperCase();
+      const isSelf = editingSite && (s.id === editingSite.id || (editingSite.codigo && editingSite.codigo.toUpperCase() === c));
+      return !isSelf && c === normCode;
+    });
+
+    if (isCodeConflict) {
+      setFeedbackMsg({ type: 'error', text: 'Este código já está em uso. Escolha outro.' });
+      setIsSubmitting(false);
+      return;
+    }
+
     const bigramasArray = formBigramas
       ? formBigramas.split(',').map((b) => b.trim().toUpperCase()).filter(Boolean)
       : [normCode, normSede];
@@ -325,21 +350,63 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
     }
   };
 
-  // Excluir canteiro do Firestore e invalidar cache
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Deseja realmente excluir o canteiro de obras "${name}"?`)) return;
+  // Alternar status operacional (Ativo / Inativo) do Canteiro
+  const handleToggleStatus = async (site: ConstructionSite) => {
+    const isAtivo = isSiteActive(site);
+    const novoStatus = isAtivo ? 'Inativo' : 'Ativo';
+    const siteName = site.nome || site.name || site.codigo || 'Canteiro';
+
+    if (isAtivo) {
+      const confirmacao = window.confirm(
+        `Deseja desativar o canteiro de obras "${siteName}"?\n\nEle deixará de constar na lista padrão de ativos e não receberá novos lançamentos, mantendo todo o histórico contábil preservado.`
+      );
+      if (!confirmacao) return;
+    }
+
+    try {
+      await canteiroService.alternarStatusCanteiro(site.id, novoStatus);
+
+      // Atualizar o estado local imediatamente
+      setSites((prev) =>
+        prev.map((s) => (s.id === site.id ? { ...s, status: novoStatus } : s))
+      );
+
+      setFeedbackMsg({
+        type: 'success',
+        text: `Canteiro "${siteName}" ${isAtivo ? 'desativado' : 'ativado'} com sucesso!`,
+      });
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erro ao alternar status do canteiro:', err);
+      alert('Erro ao alterar status do canteiro. Verifique sua conexão e permissões.');
+    }
+  };
+
+  // Excluir canteiro do Firestore com verificação de dependências de colaboradores
+  const handleDelete = async (site: ConstructionSite) => {
+    const siteName = site.nome || site.name || site.codigo || 'Canteiro';
+    const dep = canteiroService.verificarDependenciasCanteiro(site, employees);
+
+    if (dep.temColaboradores) {
+      alert(
+        `Ação não permitida!\n\nO canteiro "${siteName}" possui ${dep.totalColaboradores} colaborador(es) associado(s).\n\nExemplos: ${dep.colaboradoresExemplo.join(', ')}\n\nNão é permitido excluir fisicamente canteiros com histórico de colaboradores vinculados. Por favor, utilize a opção "Desativar" para arquivá-lo com segurança.`
+      );
+      return;
+    }
+
+    if (!window.confirm(`Deseja realmente excluir permanentemente o canteiro de obras "${siteName}"? Esta ação não pode ser desfeita.`)) return;
     try {
       if (typeof onDeleteSite === 'function') {
-        await onDeleteSite(id);
+        await onDeleteSite(site.id);
       } else {
-        await canteiroService.deleteCanteiro(id);
+        await canteiroService.deleteCanteiro(site.id, employees);
       }
 
       // Atualizar estado local imediatamente
-      setSites((prev) => prev.filter((s) => s.id !== id));
-    } catch (err) {
+      setSites((prev) => prev.filter((s) => s.id !== site.id));
+    } catch (err: any) {
       console.error('Erro ao excluir canteiro:', err);
-      alert('Erro ao excluir canteiro. Verifique as permissões de acesso.');
+      alert(err?.message || 'Erro ao excluir canteiro. Verifique as permissões de acesso.');
     }
   };
 
@@ -601,11 +668,11 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
               isDark ? 'bg-[#0F1B33] border-[#2E4566] text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
             }`}
           >
-            <option value="TODOS">Todos os Status</option>
-            <option value="ATIVO">Ativos</option>
+            <option value="ATIVO">Apenas Ativos (Padrão)</option>
+            <option value="TODOS">Todos os Canteiros</option>
+            <option value="INATIVO">Apenas Inativos</option>
             <option value="DESMOBILIZACAO">Em Desmobilização</option>
             <option value="PLANEJADO">Planejados</option>
-            <option value="INATIVO">Inativos / Concluídos</option>
           </select>
         </div>
       </div>
@@ -804,7 +871,7 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
                         {renderStatusBadge(site.status)}
                       </td>
 
-                      {/* 7. Ações (Editar e Excluir) */}
+                      {/* 7. Ações (Editar, Desativar/Ativar e Excluir Seguro) */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
@@ -820,17 +887,45 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
                             <span>Editar</span>
                           </button>
 
+                          {/* Toggle Desativar / Ativar */}
+                          {isSiteActive(site) ? (
+                            <button
+                              onClick={() => handleToggleStatus(site)}
+                              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1 ${
+                                isDark 
+                                  ? 'bg-[#2B2317] border-[#4A3B24] hover:bg-[#3D2F1D] text-amber-400' 
+                                  : 'bg-amber-50 border-amber-200 hover:bg-amber-100 text-amber-700'
+                              }`}
+                              title="Desativar canteiro (preserva dados contábeis e bloqueia novos lançamentos)"
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                              <span>Desativar</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleStatus(site)}
+                              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1 ${
+                                isDark 
+                                  ? 'bg-[#162B23] border-[#254A3B] hover:bg-[#1E3A2F] text-emerald-400' 
+                                  : 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100 text-emerald-700'
+                              }`}
+                              title="Reativar canteiro operacional"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Ativar</span>
+                            </button>
+                          )}
+
                           <button
-                            onClick={() => handleDelete(site.id, siteName)}
-                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1 ${
+                            onClick={() => handleDelete(site)}
+                            className={`p-1.5 rounded-lg border text-xs font-bold transition-all active:scale-[0.98] cursor-pointer flex items-center ${
                               isDark 
-                                ? 'bg-[#2B1C1F] border-[#402A30] hover:bg-[#3A252B] text-red-400' 
-                                : 'bg-red-50 border-red-200 hover:bg-red-100 text-red-700'
+                                ? 'bg-[#1E2433] border-[#2B354A] hover:bg-[#2B1C1F] hover:border-[#402A30] text-gray-400 hover:text-red-400' 
+                                : 'bg-gray-50 border-gray-200 hover:bg-red-50 hover:border-red-200 text-gray-500 hover:text-red-700'
                             }`}
-                            title="Excluir Canteiro da base de dados"
+                            title="Excluir canteiro permanentemente (somente permitido se não houver colaboradores associados)"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                            <span>Excluir</span>
                           </button>
                         </div>
                       </td>
@@ -895,9 +990,17 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
                     placeholder="Ex: KO-01, BE-02, MN-01"
                     required
                     className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold border outline-none ${
-                      isDark ? 'bg-[#0B1426] border-[#2E4566] text-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
+                      isCanteiroCodeInUse
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : isDark ? 'bg-[#0B1426] border-[#2E4566] text-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
                     }`}
                   />
+                  {isCanteiroCodeInUse && (
+                    <p className="text-[11px] text-red-500 font-medium flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Este código já está em uso. Escolha outro.</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -1118,7 +1221,7 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isCanteiroCodeInUse}
                   className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 cursor-pointer shadow-md disabled:opacity-50 transition-all active:scale-[0.98] flex items-center gap-1.5"
                 >
                   {isSubmitting ? 'Salvando no Firestore...' : 'Salvar Canteiro'}

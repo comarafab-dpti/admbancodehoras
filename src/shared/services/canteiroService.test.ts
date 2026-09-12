@@ -1,6 +1,6 @@
-import { CANTEIROS_COLLECTION, normalizePersistedSites } from './canteiroService';
+import { CANTEIROS_COLLECTION, normalizePersistedSites, canteiroService } from './canteiroService';
 import { localCache, CACHE_KEYS } from './localCache';
-import { ConstructionSite } from '../types';
+import { ConstructionSite, Employee } from '../types';
 
 let totalTests = 0;
 let passedTests = 0;
@@ -110,6 +110,50 @@ assert(filtroSedeKO.length === 1 && filtroSedeKO[0].codigo === 'KO-01', 'Filtro 
 
 const filtroBuscaEncarregado = normalizedList.filter(s => (s.encarregado || '').toLowerCase().includes('souza'));
 assert(filtroBuscaEncarregado.length === 1, 'Busca local por encarregado encontra item');
+
+console.log('\n--- 7. Gap 1: Desativação e Verificação de Dependências ---');
+const dummyEmployees: Employee[] = [
+  {
+    id: 'emp-1',
+    matricula: '12345',
+    nome: 'Colaborador Teste 1',
+    funcao: 'Operador',
+    sede: 'KO',
+    sedeCodigo: 'KO',
+    dataAdmissao: '2023-01-01',
+    status: 'Ativo',
+    canteiroExecucaoId: 'canteiro-ko-01',
+  },
+  {
+    id: 'emp-2',
+    matricula: '67890',
+    nome: 'Colaborador Teste 2',
+    funcao: 'Eletricista',
+    sede: 'BE',
+    sedeCodigo: 'BE',
+    dataAdmissao: '2023-02-01',
+    status: 'Ativo',
+  }
+];
+
+// Teste de canteiro com colaboradores
+const depKO = canteiroService.verificarDependenciasCanteiro('KO', dummyEmployees);
+assert(depKO.temColaboradores === true, 'Detecta que o canteiro KO possui colaboradores vinculados');
+assert(depKO.totalColaboradores === 1, 'Conta exatamente 1 colaborador em KO');
+
+// Teste de canteiro sem colaboradores
+const depFB = canteiroService.verificarDependenciasCanteiro('FB', dummyEmployees);
+assert(depFB.temColaboradores === false, 'Detecta que o canteiro FB não possui colaboradores vinculados');
+assert(depFB.totalColaboradores === 0, 'Conta 0 colaboradores em FB');
+
+// Teste de bloqueio de exclusão física quando há dependência
+let promiseRejeitada = false;
+try {
+  await canteiroService.deleteCanteiro('KO', dummyEmployees);
+} catch (err: any) {
+  promiseRejeitada = err.message.includes('Não é permitido excluir fisicamente este canteiro');
+}
+assert(promiseRejeitada, 'deleteCanteiro rejeita exclusão com mensagem clara quando há colaboradores');
 
 console.log(`\nResultado: ${passedTests}/${totalTests} testes passaram com sucesso.\n`);
 if (passedTests !== totalTests) {

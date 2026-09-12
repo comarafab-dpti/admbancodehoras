@@ -1,20 +1,191 @@
 -- ============================================================================
--- COMARA — Migração 002: Row Level Security (RLS)
--- Espelha o modelo de segurança do legado firestore.rules
--- Totalmente IDEMPOTENTE: seguro para reexecução sem erros 42710
+-- COMARA — Sistema de Gestão de Banco de Horas SPTF
+-- 000_BOOTSTRAP.SQL: Migração Consolidada e 100% Idempotente
+-- ============================================================================
+-- Este arquivo consolida o esquema (001_schema.sql) e as regras RLS (002_rls.sql).
+-- Pode ser executado repetidas vezes no SQL Editor do Supabase sem gerar nenhum erro
+-- (incluindo o erro 42710 do Realtime ou duplicidade de políticas/índices).
 -- ============================================================================
 
--- ----------------------------------------------------------------------------
--- FUNÇÕES AUXILIARES (SECURITY DEFINER para evitar recursão de RLS em admin_users)
--- ----------------------------------------------------------------------------
+-- ============================================================================
+-- PARTE 1: TABELAS DOCUMENTAIS
+-- ============================================================================
 
--- E-mail do usuário autenticado no JWT (minúsculas)
+create table if not exists public.colaboradores (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.lancamentos (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.dispensas_sptf (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.contracheques (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.insalubridade_records (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.insalubridade (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.resumo_mensal (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.competencias_controle (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.canteiros_obras (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.canteiros (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.unidades_organizacionais (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.colaboradores_auth (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.admin_users (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.usuarios_sistema (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.system_config (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.institution_settings (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.system_logs (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.logs_auditoria (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.logs_acesso (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.test (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+-- ============================================================================
+-- PARTE 2: ÍNDICES (GIN + EXPRESSIONAIS)
+-- ============================================================================
+
+create index if not exists idx_colaboradores_data on public.colaboradores using gin (data);
+create index if not exists idx_colaboradores_nome on public.colaboradores ((data->>'nome'));
+create index if not exists idx_colaboradores_sede on public.colaboradores ((data->>'sedeCodigo'));
+
+create index if not exists idx_lancamentos_data on public.lancamentos using gin (data);
+create index if not exists idx_lancamentos_matricula on public.lancamentos ((data->>'matricula'));
+create index if not exists idx_lancamentos_sede on public.lancamentos ((data->>'employeeSede'));
+create index if not exists idx_lancamentos_data_registro on public.lancamentos ((data->>'dataRegistro'));
+create index if not exists idx_lancamentos_competencia on public.lancamentos ((data->>'competencia'));
+
+create index if not exists idx_dispensas_data on public.dispensas_sptf using gin (data);
+create index if not exists idx_dispensas_matricula on public.dispensas_sptf ((data->>'matricula'));
+create index if not exists idx_dispensas_sede on public.dispensas_sptf ((data->>'employeeSede'));
+create index if not exists idx_dispensas_competencia on public.dispensas_sptf ((data->>'competencia'));
+
+create index if not exists idx_contracheques_data on public.contracheques using gin (data);
+create index if not exists idx_contracheques_matricula on public.contracheques ((data->>'matricula'));
+create index if not exists idx_contracheques_sede on public.contracheques ((data->>'sede'));
+
+create index if not exists idx_insalubridade_data on public.insalubridade_records using gin (data);
+create index if not exists idx_insalubridade_sede on public.insalubridade_records ((data->>'sede'));
+create index if not exists idx_insalubridade_data_evento on public.insalubridade_records ((data->>'dataEvento'));
+create index if not exists idx_insalubridade_matricula on public.insalubridade_records ((data->>'matricula'));
+
+create index if not exists idx_admin_users_data on public.admin_users using gin (data);
+create index if not exists idx_admin_users_status on public.admin_users ((data->>'status'));
+create index if not exists idx_admin_users_canteiro on public.admin_users ((data->>'canteiroSede'));
+
+create index if not exists idx_canteiros_obras_data on public.canteiros_obras using gin (data);
+create index if not exists idx_canteiros_obras_status on public.canteiros_obras ((data->>'status'));
+create index if not exists idx_canteiros_obras_codigo on public.canteiros_obras ((data->>'codigo'));
+
+create index if not exists idx_unidades_organizacionais_data on public.unidades_organizacionais using gin (data);
+create index if not exists idx_unidades_organizacionais_codigo on public.unidades_organizacionais ((data->>'codigo'));
+create index if not exists idx_unidades_organizacionais_status on public.unidades_organizacionais ((data->>'ativa'));
+create index if not exists idx_unidades_organizacionais_tipo on public.unidades_organizacionais ((data->>'tipo'));
+create index if not exists idx_unidades_organizacionais_pai on public.unidades_organizacionais ((data->>'pai'));
+
+create index if not exists idx_logs_auditoria_data on public.logs_auditoria using gin (data);
+create index if not exists idx_logs_auditoria_ts on public.logs_auditoria ((data->>'timestamp'));
+create index if not exists idx_logs_acesso_ts on public.logs_acesso ((data->>'timestamp'));
+
+-- ============================================================================
+-- PARTE 3: FUNÇÕES AUXILIARES DE SEGURANÇA (SECURITY DEFINER)
+-- ============================================================================
+
 create or replace function public.meu_email()
 returns text language sql stable security definer set search_path = public as $$
   select lower(coalesce(auth.jwt() ->> 'email', ''))
 $$;
 
--- Conteúdo do documento admin_users do usuário (ou null)
 create or replace function public.admin_data()
 returns jsonb language sql stable security definer set search_path = public as $$
   select a.data from public.admin_users a where a.id = public.meu_email() limit 1
@@ -25,7 +196,6 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (select 1 from public.admin_users a where a.id = public.meu_email())
 $$;
 
--- Papel bruto (nivelAcesso tem precedência sobre role, como no legado)
 create or replace function public.raw_role()
 returns text language sql stable security definer set search_path = public as $$
   select coalesce(
@@ -55,7 +225,6 @@ returns boolean language sql stable security definer set search_path = public as
   select public.meu_email() in ('comarafab@gmail.com', 'coari.comara@gmail.com')
 $$;
 
--- Normalização de perfis legados (mesma matriz do firestore.rules)
 create or replace function public.normalize_role()
 returns text language sql stable security definer set search_path = public as $$
   select case public.raw_role()
@@ -77,7 +246,6 @@ returns text language sql stable security definer set search_path = public as $$
   end
 $$;
 
--- O perfil vem ESTRITAMENTE de admin_users; e-mail master só vale para bootstrap
 create or replace function public.is_super_admin()
 returns boolean language sql stable security definer set search_path = public as $$
   select (public.is_admin_active() and public.normalize_role() = 'SUPER_ADMIN')
@@ -131,15 +299,11 @@ returns boolean language sql stable security definer set search_path = public as
       or public.is_da() or public.is_chefe_canteiro()
 $$;
 
--- ----------------------------------------------------------------------------
--- ESCOPO DE CANTEIRO
--- ----------------------------------------------------------------------------
 create or replace function public.meu_canteiro()
 returns text language sql stable security definer set search_path = public as $$
   select coalesce(public.admin_data() ->> 'canteiroSede', '')
 $$;
 
--- Documento pertence ao canteiro do usuário (aceita sedeCodigo/employeeSede/sede)
 create or replace function public.documento_do_meu_canteiro(doc jsonb)
 returns boolean language sql stable as $$
   select public.meu_canteiro() <> ''
@@ -167,7 +331,6 @@ returns boolean language sql stable as $$
           and canteiro = public.meu_canteiro())
 $$;
 
--- Contracheques guardam sede em formato livre (ex.: "KO-DL")
 create or replace function public.contracheque_canteiro_permitido(doc jsonb)
 returns boolean language sql stable as $$
   select public.is_global_admin()
@@ -178,9 +341,6 @@ returns boolean language sql stable as $$
       )
 $$;
 
--- ----------------------------------------------------------------------------
--- COMPETÊNCIAS (janela de lançamento — espelha firestore.rules)
--- ----------------------------------------------------------------------------
 create or replace function public.competencia_atual()
 returns text language sql stable as $$
   select to_char(now(), 'YYYY-MM')
@@ -210,7 +370,6 @@ returns boolean language sql stable as $$
   select public.status_competencia_canteiro(public.competencia_atual(), canteiro) = 'ABERTO'
 $$;
 
--- Ausência de controle = liberado (primeiro mês, canteiro novo, implantação)
 create or replace function public.competencia_anterior_fechada(canteiro text)
 returns boolean language sql stable security definer set search_path = public as $$
   select not exists (
@@ -241,14 +400,12 @@ returns boolean language sql stable as $$
       )
 $$;
 
--- Atualização de competencias_controle: restrição via trigger de segurança
 create or replace function public.competencias_controle_guard()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   meu text;
   novo_status_canteiros jsonb;
 begin
-  -- Perfis globais alteram a competência livremente.
   if public.is_global_admin() then
     return new;
   end if;
@@ -259,7 +416,6 @@ begin
       raise exception 'Perfil sem canteiro vinculado não pode alterar competências.';
     end if;
 
-    -- Clampa: mantém todos os campos antigos e aceita apenas statusCanteiros[meu].
     novo_status_canteiros := coalesce(old.data -> 'statusCanteiros', '{}'::jsonb);
     if new.data ? 'statusCanteiros' and (new.data -> 'statusCanteiros') ? meu then
       novo_status_canteiros := jsonb_set(
@@ -284,9 +440,10 @@ create trigger trg_competencias_controle_guard
   before update on public.competencias_controle
   for each row execute function public.competencias_controle_guard();
 
--- ----------------------------------------------------------------------------
--- ATIVAÇÃO DO RLS
--- ----------------------------------------------------------------------------
+-- ============================================================================
+-- PARTE 4: ATIVAÇÃO DE ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+
 alter table public.colaboradores enable row level security;
 alter table public.colaboradores_auth enable row level security;
 alter table public.lancamentos enable row level security;
@@ -307,9 +464,11 @@ alter table public.system_logs enable row level security;
 alter table public.logs_auditoria enable row level security;
 alter table public.logs_acesso enable row level security;
 
--- ----------------------------------------------------------------------------
+-- ============================================================================
+-- PARTE 5: POLÍTICAS RLS (IDEMPOTENTES COM DROP IF EXISTS)
+-- ============================================================================
+
 -- COLABORADORES
--- ----------------------------------------------------------------------------
 drop policy if exists colaboradores_select on public.colaboradores;
 create policy colaboradores_select on public.colaboradores
   for select to authenticated using (
@@ -335,18 +494,14 @@ drop policy if exists colaboradores_delete on public.colaboradores;
 create policy colaboradores_delete on public.colaboradores
   for delete to authenticated using ((select public.is_global_admin()));
 
--- ----------------------------------------------------------------------------
--- COLABORADORES_AUTH (credenciais presenciadas — restrito a perfis globais)
--- ----------------------------------------------------------------------------
+-- COLABORADORES_AUTH
 drop policy if exists colaboradores_auth_all on public.colaboradores_auth;
 create policy colaboradores_auth_all on public.colaboradores_auth
   for all to authenticated
   using ((select public.is_global_admin()))
   with check ((select public.is_global_admin()));
 
--- ----------------------------------------------------------------------------
 -- LANÇAMENTOS
--- ----------------------------------------------------------------------------
 drop policy if exists lancamentos_select on public.lancamentos;
 create policy lancamentos_select on public.lancamentos
   for select to authenticated using (
@@ -376,9 +531,7 @@ create policy lancamentos_delete on public.lancamentos
     (select public.pode_lancar()) and public.lancamento_competencia_permitido(data)
   );
 
--- ----------------------------------------------------------------------------
 -- DISPENSAS SPTF
--- ----------------------------------------------------------------------------
 drop policy if exists dispensas_select on public.dispensas_sptf;
 create policy dispensas_select on public.dispensas_sptf
   for select to authenticated using (
@@ -408,9 +561,7 @@ create policy dispensas_delete on public.dispensas_sptf
     (select public.pode_lancar()) and public.lancamento_competencia_permitido(data)
   );
 
--- ----------------------------------------------------------------------------
--- CONTRACHEQUES (dado importado da folha — não depende de competência aberta)
--- ----------------------------------------------------------------------------
+-- CONTRACHEQUES
 drop policy if exists contracheques_select on public.contracheques;
 create policy contracheques_select on public.contracheques
   for select to authenticated using (
@@ -438,9 +589,7 @@ drop policy if exists contracheques_delete on public.contracheques;
 create policy contracheques_delete on public.contracheques
   for delete to authenticated using ((select public.is_global_admin()));
 
--- ----------------------------------------------------------------------------
 -- INSALUBRIDADE
--- ----------------------------------------------------------------------------
 drop policy if exists insalubridade_select on public.insalubridade_records;
 create policy insalubridade_select on public.insalubridade_records
   for select to authenticated using (
@@ -481,9 +630,7 @@ create policy insalubridade_legacy on public.insalubridade
     )
   );
 
--- ----------------------------------------------------------------------------
 -- RESUMO MENSAL
--- ----------------------------------------------------------------------------
 drop policy if exists resumo_mensal_select on public.resumo_mensal;
 create policy resumo_mensal_select on public.resumo_mensal
   for select to authenticated using (
@@ -509,9 +656,7 @@ drop policy if exists resumo_mensal_delete on public.resumo_mensal;
 create policy resumo_mensal_delete on public.resumo_mensal
   for delete to authenticated using ((select public.is_super_admin()));
 
--- ----------------------------------------------------------------------------
 -- COMPETÊNCIAS CONTROLE
--- ----------------------------------------------------------------------------
 drop policy if exists competencias_select on public.competencias_controle;
 create policy competencias_select on public.competencias_controle
   for select to authenticated using (true);
@@ -536,9 +681,7 @@ drop policy if exists competencias_delete on public.competencias_controle;
 create policy competencias_delete on public.competencias_controle
   for delete to authenticated using ((select public.is_global_admin()));
 
--- ----------------------------------------------------------------------------
--- CANTEIROS / UNIDADES ORGANIZACIONAIS
--- ----------------------------------------------------------------------------
+-- CANTEIROS E UNIDADES ORGANIZACIONAIS
 drop policy if exists canteiros_obras_select on public.canteiros_obras;
 create policy canteiros_obras_select on public.canteiros_obras
   for select to authenticated using (true);
@@ -569,11 +712,7 @@ create policy unidades_write on public.unidades_organizacionais
   using ((select public.is_global_admin()))
   with check ((select public.is_global_admin()));
 
--- ----------------------------------------------------------------------------
 -- ADMIN USERS
--- - usuário comum lê apenas o próprio registro; não pode promover a si mesmo
--- - SUPER_ADMIN administra tudo; RH administra perfis; gerente administra DA/AUX do próprio canteiro
--- ----------------------------------------------------------------------------
 drop policy if exists admin_users_select on public.admin_users;
 create policy admin_users_select on public.admin_users
   for select to authenticated using (
@@ -611,7 +750,6 @@ create policy admin_users_update on public.admin_users
     (select public.is_super_admin())
     or (select public.is_rh())
     or (
-      -- gerente: não pode promover a si mesmo nem alterar o próprio papel
       (select public.is_gerente_canteiro())
       and id <> public.meu_email()
       and coalesce(data ->> 'canteiroSede', '') = public.meu_canteiro()
@@ -623,9 +761,7 @@ drop policy if exists admin_users_delete on public.admin_users;
 create policy admin_users_delete on public.admin_users
   for delete to authenticated using ((select public.is_super_admin()));
 
--- ----------------------------------------------------------------------------
--- USUARIOS SISTEMA (espelho de admin_users)
--- ----------------------------------------------------------------------------
+-- USUARIOS SISTEMA
 drop policy if exists usuarios_sistema_select on public.usuarios_sistema;
 create policy usuarios_sistema_select on public.usuarios_sistema
   for select to authenticated using (
@@ -652,9 +788,7 @@ drop policy if exists usuarios_sistema_delete on public.usuarios_sistema;
 create policy usuarios_sistema_delete on public.usuarios_sistema
   for delete to authenticated using ((select public.is_super_admin()));
 
--- ----------------------------------------------------------------------------
--- LOGS (criação liberada para autenticados; leitura global)
--- ----------------------------------------------------------------------------
+-- LOGS
 drop policy if exists logs_acesso_select on public.logs_acesso;
 create policy logs_acesso_select on public.logs_acesso
   for select to authenticated using ((select public.is_global_admin()));
@@ -679,8 +813,6 @@ drop policy if exists logs_auditoria_insert on public.logs_auditoria;
 create policy logs_auditoria_insert on public.logs_auditoria
   for insert to authenticated with check (auth.uid() is not null);
 
--- logs_auditoria: imutável (sem update/delete, como no legado)
-
 drop policy if exists system_logs_select on public.system_logs;
 create policy system_logs_select on public.system_logs
   for select to authenticated using ((select public.is_global_admin()));
@@ -697,9 +829,7 @@ drop policy if exists system_logs_delete on public.system_logs;
 create policy system_logs_delete on public.system_logs
   for delete to authenticated using ((select public.is_super_admin()));
 
--- ----------------------------------------------------------------------------
--- CONFIGURAÇÕES (leitura pública; escrita restrita a perfis globais)
--- ----------------------------------------------------------------------------
+-- CONFIGURAÇÕES
 drop policy if exists system_config_select on public.system_config;
 create policy system_config_select on public.system_config
   for select to anon, authenticated using (true);
@@ -721,8 +851,9 @@ create policy institution_settings_write on public.institution_settings
   with check ((select public.is_global_admin()));
 
 -- ============================================================================
--- REALTIME (Garantia idempotente de publicação)
+-- PARTE 6: REALTIME (PUBLICAÇÃO IDEMPOTENTE)
 -- ============================================================================
+
 do $$
 declare
   t text;
@@ -758,3 +889,71 @@ begin
     end if;
   end loop;
 end $$;
+
+-- ============================================================================
+-- PARTE 7: HARDENING DE SEGURANÇA (REVOGAÇÃO DE EXECUTE E SEARCH_PATH FIXO)
+-- ============================================================================
+
+-- 1. Revogação de EXECUTE para anon e authenticated em funções internas de RLS
+revoke execute on function public.meu_email() from anon, authenticated;
+revoke execute on function public.admin_data() from anon, authenticated;
+revoke execute on function public.has_admin_doc() from anon, authenticated;
+revoke execute on function public.raw_role() from anon, authenticated;
+revoke execute on function public.admin_status() from anon, authenticated;
+revoke execute on function public.is_admin_active() from anon, authenticated;
+revoke execute on function public.is_master_email() from anon, authenticated;
+revoke execute on function public.normalize_role() from anon, authenticated;
+revoke execute on function public.is_super_admin() from anon, authenticated;
+revoke execute on function public.is_rh() from anon, authenticated;
+revoke execute on function public.is_global_admin() from anon, authenticated;
+revoke execute on function public.is_gerente_canteiro() from anon, authenticated;
+revoke execute on function public.is_chefe_canteiro() from anon, authenticated;
+revoke execute on function public.is_chefe_da() from anon, authenticated;
+revoke execute on function public.is_aux_da() from anon, authenticated;
+revoke execute on function public.is_da() from anon, authenticated;
+revoke execute on function public.pode_lancar() from anon, authenticated;
+revoke execute on function public.pode_gerenciar_competencia() from anon, authenticated;
+revoke execute on function public.meu_canteiro() from anon, authenticated;
+revoke execute on function public.documento_do_meu_canteiro(jsonb) from anon, authenticated;
+revoke execute on function public.canteiro_do_documento(jsonb) from anon, authenticated;
+revoke execute on function public.canteiro_permitido(text) from anon, authenticated;
+revoke execute on function public.contracheque_canteiro_permitido(jsonb) from anon, authenticated;
+revoke execute on function public.competencia_atual() from anon, authenticated;
+revoke execute on function public.competencia_anterior(text) from anon, authenticated;
+revoke execute on function public.status_competencia_canteiro(text, text) from anon, authenticated;
+revoke execute on function public.competencia_atual_aberta(text) from anon, authenticated;
+revoke execute on function public.competencia_anterior_fechada(text) from anon, authenticated;
+revoke execute on function public.lancamento_competencia_permitido(jsonb) from anon, authenticated;
+revoke execute on function public.competencias_controle_guard() from anon, authenticated;
+
+-- 2. Fixar search_path nas funções
+alter function public.meu_email() set search_path = public, pg_temp;
+alter function public.admin_data() set search_path = public, pg_temp;
+alter function public.has_admin_doc() set search_path = public, pg_temp;
+alter function public.raw_role() set search_path = public, pg_temp;
+alter function public.admin_status() set search_path = public, pg_temp;
+alter function public.is_admin_active() set search_path = public, pg_temp;
+alter function public.is_master_email() set search_path = public, pg_temp;
+alter function public.normalize_role() set search_path = public, pg_temp;
+alter function public.is_super_admin() set search_path = public, pg_temp;
+alter function public.is_rh() set search_path = public, pg_temp;
+alter function public.is_global_admin() set search_path = public, pg_temp;
+alter function public.is_gerente_canteiro() set search_path = public, pg_temp;
+alter function public.is_chefe_canteiro() set search_path = public, pg_temp;
+alter function public.is_chefe_da() set search_path = public, pg_temp;
+alter function public.is_aux_da() set search_path = public, pg_temp;
+alter function public.is_da() set search_path = public, pg_temp;
+alter function public.pode_lancar() set search_path = public, pg_temp;
+alter function public.pode_gerenciar_competencia() set search_path = public, pg_temp;
+alter function public.meu_canteiro() set search_path = public, pg_temp;
+alter function public.documento_do_meu_canteiro(jsonb) set search_path = public, pg_temp;
+alter function public.canteiro_do_documento(jsonb) set search_path = public, pg_temp;
+alter function public.canteiro_permitido(text) set search_path = public, pg_temp;
+alter function public.contracheque_canteiro_permitido(jsonb) set search_path = public, pg_temp;
+alter function public.competencia_atual() set search_path = public, pg_temp;
+alter function public.competencia_anterior(text) set search_path = public, pg_temp;
+alter function public.status_competencia_canteiro(text, text) set search_path = public, pg_temp;
+alter function public.competencia_atual_aberta(text) set search_path = public, pg_temp;
+alter function public.competencia_anterior_fechada(text) set search_path = public, pg_temp;
+alter function public.lancamento_competencia_permitido(jsonb) set search_path = public, pg_temp;
+alter function public.competencias_controle_guard() set search_path = public, pg_temp;

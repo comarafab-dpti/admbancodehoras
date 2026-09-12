@@ -12,7 +12,7 @@ import {
   Unsubscribe 
 } from './db';
 import { db, logDbError, OperationType } from './db';
-import { ConstructionSite, CanteiroSignatures, TratamentoTitulo } from '../types';
+import { ConstructionSite, CanteiroSignatures, TratamentoTitulo, Employee } from '../types';
 import { dbService, sanitizeDbData } from './dbService';
 
 export const CANTEIROS_COLLECTION = 'canteiros_obras';
@@ -461,9 +461,77 @@ export const canteiroService = {
   },
 
   /**
-   * Exclui um canteiro diretamente do Cloud Firestore
+   * Verifica se há colaboradores associados a um canteiro de obras.
    */
-  async deleteCanteiro(id: string): Promise<void> {
+  verificarDependenciasCanteiro(
+    siteOrCodeOrId: ConstructionSite | string,
+    employees: Employee[] = []
+  ): { temColaboradores: boolean; totalColaboradores: number; colaboradoresExemplo: string[] } {
+    let siteCode = '';
+    let siteId = '';
+
+    if (typeof siteOrCodeOrId === 'string') {
+      siteCode = siteOrCodeOrId.toUpperCase().trim();
+      siteId = siteOrCodeOrId;
+    } else if (siteOrCodeOrId) {
+      siteCode = (siteOrCodeOrId.codigo || siteOrCodeOrId.code || '').toUpperCase().trim();
+      siteId = siteOrCodeOrId.id;
+    }
+
+    const colaboradoresVinculados = employees.filter((emp) => {
+      const empSede = (emp.sedeCodigo || emp.sede || emp.sede_atual || emp.sede_origem || '').toUpperCase().trim();
+      const empCanteiroId = emp.canteiroExecucaoId || emp.canteiroId || '';
+      const empUoExecucao = (emp.uoExecucaoCodigo || emp.uoExecucao || '').toUpperCase().trim();
+
+      return (
+        (siteCode && (empSede === siteCode || empUoExecucao.includes(siteCode))) ||
+        (siteId && (empCanteiroId === siteId || empSede === siteId))
+      );
+    });
+
+    return {
+      temColaboradores: colaboradoresVinculados.length > 0,
+      totalColaboradores: colaboradoresVinculados.length,
+      colaboradoresExemplo: colaboradoresVinculados.slice(0, 3).map((e) => `${e.nome} (${e.matricula})`),
+    };
+  },
+
+  /**
+   * Alterna o status operacional de um canteiro (Ativo / Inativo).
+   */
+  async alternarStatusCanteiro(id: string, novoStatus: 'Ativo' | 'Inativo'): Promise<void> {
+    const path = `${CANTEIROS_COLLECTION}/${id}`;
+    const nowIso = new Date().toISOString();
+    try {
+      await dbService.ensureAuthenticatedWriteSession();
+      await setDoc(
+        doc(db, CANTEIROS_COLLECTION, id),
+        sanitizeDbData({
+          status: novoStatus,
+          updatedAt: nowIso,
+        }),
+        { merge: true }
+      );
+    } catch (error) {
+      logDbError(error, OperationType.WRITE, path);
+      throw error;
+    }
+  },
+
+  /**
+   * Exclui um canteiro diretamente do Cloud Firestore.
+   * Não permite exclusão física se houver colaboradores vinculados.
+   */
+  async deleteCanteiro(id: string, employees?: Employee[]): Promise<void> {
+    if (employees && employees.length > 0) {
+      const dep = this.verificarDependenciasCanteiro(id, employees);
+      if (dep.temColaboradores) {
+        throw new Error(
+          `Não é permitido excluir fisicamente este canteiro pois existem ${dep.totalColaboradores} colaborador(es) associados a ele. Para arquivá-lo, utilize a opção "Desativar".`
+        );
+      }
+    }
+
     const path = `${CANTEIROS_COLLECTION}/${id}`;
     try {
       await dbService.ensureAuthenticatedWriteSession();

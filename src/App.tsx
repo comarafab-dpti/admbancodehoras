@@ -880,6 +880,23 @@ export default function App() {
     }
   };
 
+  // Auth Handler: E-mail ou Matrícula e Senha (Supabase Auth nativo)
+  const handleEmailPasswordSignIn = async (identifier: string, password: string) => {
+    try {
+      setIsVerifyingPermissions(true);
+      const { user, processed, mustChangePassword } = await authService.signInWithEmailPassword(identifier, password);
+      const res = applyUserAuth(user, processed);
+      return { ...res, mustChangePassword };
+    } catch (err: any) {
+      console.warn('Aviso no login por e-mail/senha:', err);
+      const errorMsg = err?.message || 'Falha ao autenticar no sistema.';
+      showToast(errorMsg, 'error');
+      return { success: false, error: errorMsg };
+    } finally {
+      setIsVerifyingPermissions(false);
+    }
+  };
+
   // Auth Handler: Acesso de Contingência / Homologação para Contas Master
   const handleDevAdminSignIn = async (email: string = 'coari.comara@gmail.com', password?: string) => {
     try {
@@ -1855,6 +1872,7 @@ export default function App() {
       <AdminLoginModal
         isOpen
         onClose={() => undefined}
+        onEmailPasswordSignIn={handleEmailPasswordSignIn}
         onGoogleSignIn={handleGoogleSignIn}
         onDevAdminSignIn={handleDevAdminSignIn}
         isDark={isDark}

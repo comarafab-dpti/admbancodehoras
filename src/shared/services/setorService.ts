@@ -8,7 +8,7 @@ import {
   Unsubscribe
 } from './db';
 import { db, logDbError, OperationType } from './db';
-import { UnidadeOrganizacional, Employee } from '../types';
+import { UnidadeOrganizacional, Employee, TipoUnidadeOrganizacional } from '../types';
 import {
   UNIDADES_ORGANIZACIONAIS,
   UNIDADES_ORGANIZACIONAIS_COLLECTION,
@@ -18,11 +18,27 @@ import { localCache } from './localCache';
 
 const CACHE_KEY_SETORES = 'unidades_organizacionais_setores';
 
+export interface DependenciasUO {
+  temDependencias: boolean;
+  totalFilhos: number;
+  totalColaboradores: number;
+  filhos: UnidadeOrganizacional[];
+  mensagemBloqueio?: string;
+}
+
 /**
- * Normaliza um texto para formar código de setor válido (ex: SETOR_SAQ).
+ * Sugere um código padronizado conforme convenção de cada tipo de UO:
+ * - SEDE -> SEDE_XX (ex: SEDE_BE)
+ * - DACO -> DACO_XX (ex: DACO_MN)
+ * - DECO -> DECO_XX (ex: DECO_KO)
+ * - SETOR -> SETOR_NOME (ex: SETOR_DAPC)
  */
-export function gerarSugestaoCodigoSetor(sigla: string, nome?: string): string {
-  const base = (sigla || nome || 'SETOR')
+export function gerarSugestaoCodigoUO(
+  tipo: TipoUnidadeOrganizacional,
+  sigla: string,
+  nome?: string
+): string {
+  const base = (sigla || nome || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
@@ -30,10 +46,29 @@ export function gerarSugestaoCodigoSetor(sigla: string, nome?: string): string {
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
 
-  if (base.startsWith('SETOR_')) {
-    return base;
+  if (tipo === 'SEDE') {
+    if (base.startsWith('SEDE_')) return base;
+    return `SEDE_${base || 'NOVA'}`;
   }
-  return `SETOR_${base}`;
+  if (tipo === 'DACO') {
+    if (base.startsWith('DACO_')) return base;
+    return `DACO_${base || 'NOVO'}`;
+  }
+  if (tipo === 'DECO') {
+    if (base.startsWith('DECO_')) return base;
+    return `DECO_${base || 'NOVO'}`;
+  }
+  // SETOR
+  if (base.startsWith('SETOR_')) return base;
+  return `SETOR_${base || 'NOVO'}`;
+}
+
+/**
+ * Normaliza um texto para formar código de setor válido (ex: SETOR_SAQ).
+ * Mantido para compatibilidade regressiva.
+ */
+export function gerarSugestaoCodigoSetor(sigla: string, nome?: string): string {
+  return gerarSugestaoCodigoUO('SETOR', sigla, nome);
 }
 
 export const setorService = {
@@ -117,18 +152,31 @@ export const setorService = {
   },
 
   /**
-   * Salva ou atualiza um setor na coleção 'unidades_organizacionais'.
+   * Salva ou atualiza uma UO (qualquer tipo: SETOR, DECO, DACO, SEDE)
+   * na coleção 'unidades_organizacionais'.
    * Se o código tiver sido renomeado, exclui o documento anterior com segurança.
    */
   async salvarSetor(setor: UnidadeOrganizacional, codigoAntigo?: string): Promise<void> {
     const codigoLimpo = setor.codigo.trim().toUpperCase();
+    const tipoValido: TipoUnidadeOrganizacional = setor.tipo || 'SETOR';
+    
+    // Regra condicional de UO Pai:
+    // - SETOR: pai é obrigatório e vincula a uma UO pai (SEDE/DACO/DECO)
+    // - DECO, DACO, SEDE: pai implícito = 'COMARA'
+    let paiFinal = setor.pai;
+    if (tipoValido === 'SETOR') {
+      paiFinal = (setor.pai && setor.pai !== 'COMARA') ? setor.pai : 'SEDE_BE';
+    } else {
+      paiFinal = 'COMARA';
+    }
+
     const dadosFinais: UnidadeOrganizacional = {
       codigo: codigoLimpo,
       nome: setor.nome.trim(),
       siglaExibicao: setor.siglaExibicao.trim().toUpperCase(),
-      tipo: 'SETOR',
+      tipo: tipoValido,
       sedeOuCanteiroPadrao: setor.sedeOuCanteiroPadrao || 'BE',
-      pai: setor.pai || 'SEDE_BE',
+      pai: paiFinal,
       ativa: typeof setor.ativa === 'boolean' ? setor.ativa : true,
       descricao: setor.descricao ? setor.descricao.trim() : ''
     };
@@ -144,13 +192,13 @@ export const setorService = {
       delete UNIDADES_ORGANIZACIONAIS[codigoAntigo];
     }
 
-    // 2. Persiste no Firestore
+    // 2. Persiste no Firestore / Supabase
     try {
       const docRef = doc(db, UNIDADES_ORGANIZACIONAIS_COLLECTION, codigoLimpo);
       await setDoc(docRef, dadosFinais, { merge: true });
     } catch (e) {
       logDbError(e, OperationType.WRITE, `${UNIDADES_ORGANIZACIONAIS_COLLECTION}/${codigoLimpo}`);
-      console.warn('Erro ao salvar setor no Firestore, mantendo em memória e cache local:', e);
+      console.warn('Erro ao salvar UO no Firestore, mantendo em memória e cache local:', e);
     }
 
     // 3. Atualiza catálogo em memória
@@ -161,10 +209,72 @@ export const setorService = {
   },
 
   /**
-   * Remove um setor do catálogo oficial.
+   * Verifica se a UO possui dependências (filhos na árvore ou colaboradores vinculados).
+   * Impede exclusões acidentais que corrompam a árvore ou relatórios contábeis.
    */
-  async excluirSetor(codigo: string): Promise<void> {
+  verificarDependenciasUO(
+    codigo: string,
+    employees: Employee[] = [],
+    todasUOs?: UnidadeOrganizacional[]
+  ): DependenciasUO {
+    const codNorm = (codigo || '').trim().toUpperCase();
+    if (!codNorm) {
+      return { temDependencias: false, totalFilhos: 0, totalColaboradores: 0, filhos: [] };
+    }
+
+    // 1. Filhos (outras UOs que têm esta UO como pai)
+    const listaUOs = todasUOs && todasUOs.length > 0 
+      ? todasUOs 
+      : Object.values(UNIDADES_ORGANIZACIONAIS);
+      
+    const filhos = listaUOs.filter(
+      (u) => u.codigo.toUpperCase() !== codNorm && (u.pai || '').trim().toUpperCase() === codNorm
+    );
+    const totalFilhos = filhos.length;
+
+    // 2. Colaboradores vinculados (lotação administrativa, UO de execução ou departamento)
+    const colaboradores = employees.filter((emp) => {
+      const lotacao = (emp.lotacaoUoCodigo || emp.lotacao || '').trim().toUpperCase();
+      const execucao = (emp.uoExecucaoCodigo || emp.uoExecucao || '').trim().toUpperCase();
+      const depto = (emp.departamentoOriginal || emp.departamento || '').trim().toUpperCase();
+      return lotacao === codNorm || execucao === codNorm || depto === codNorm;
+    });
+    const totalColaboradores = colaboradores.length;
+
+    const temDependencias = totalFilhos > 0 || totalColaboradores > 0;
+    let mensagemBloqueio: string | undefined;
+
+    if (temDependencias) {
+      mensagemBloqueio = `Esta UO tem dependências (${totalFilhos} filhos, ${totalColaboradores} colaboradores). Desative-a em vez de excluir.`;
+    }
+
+    return {
+      temDependencias,
+      totalFilhos,
+      totalColaboradores,
+      filhos,
+      mensagemBloqueio
+    };
+  },
+
+  /**
+   * Remove uma UO do catálogo oficial, garantindo que não haja dependências ativas.
+   */
+  async excluirSetor(
+    codigo: string,
+    employees: Employee[] = [],
+    todasUOs?: UnidadeOrganizacional[]
+  ): Promise<void> {
     const codigoLimpo = codigo.trim().toUpperCase();
+
+    // 0. Validação de dependências pré-exclusão
+    const dep = this.verificarDependenciasUO(codigoLimpo, employees, todasUOs);
+    if (dep.temDependencias) {
+      throw new Error(
+        dep.mensagemBloqueio ||
+          `Esta UO tem dependências (${dep.totalFilhos} filhos, ${dep.totalColaboradores} colaboradores). Desative-a em vez de excluir.`
+      );
+    }
 
     // 1. Exclui do Firestore
     try {
@@ -172,7 +282,7 @@ export const setorService = {
       await deleteDoc(docRef);
     } catch (e) {
       logDbError(e, OperationType.DELETE, `${UNIDADES_ORGANIZACIONAIS_COLLECTION}/${codigoLimpo}`);
-      console.warn('Erro ao excluir setor no Firestore, removendo de memória local:', e);
+      console.warn('Erro ao excluir UO no Firestore, removendo de memória local:', e);
     }
 
     // 2. Remove da memória
@@ -183,7 +293,7 @@ export const setorService = {
   },
 
   /**
-   * Alterna o status ativo/inativo de um setor.
+   * Alterna o status ativo/inativo de uma UO (qualquer tipo).
    */
   async alternarStatusSetor(codigo: string, ativa: boolean): Promise<void> {
     const setorExistente = UNIDADES_ORGANIZACIONAIS[codigo];
@@ -196,20 +306,28 @@ export const setorService = {
   },
 
   /**
-   * Conta colaboradores alocados por setor (pelo código ou sigla de departamento).
+   * Conta colaboradores alocados por UO (pelo código, lotação, execução ou departamento).
    */
   contarColaboradoresPorSetor(employees: Employee[] = []): Record<string, number> {
     const contagem: Record<string, number> = {};
 
     employees.forEach((emp) => {
-      // 1. Lotação direta
+      // 1. Lotação canônica ou direta
       if (emp.lotacaoUoCodigo) {
         contagem[emp.lotacaoUoCodigo] = (contagem[emp.lotacaoUoCodigo] || 0) + 1;
       }
-      // 2. UO Execução
+      if (emp.lotacao && emp.lotacao !== emp.lotacaoUoCodigo) {
+        contagem[emp.lotacao] = (contagem[emp.lotacao] || 0) + 1;
+      }
+
+      // 2. UO Execução canônica ou direta
       if (emp.uoExecucaoCodigo && emp.uoExecucaoCodigo !== emp.lotacaoUoCodigo) {
         contagem[emp.uoExecucaoCodigo] = (contagem[emp.uoExecucaoCodigo] || 0) + 1;
       }
+      if (emp.uoExecucao && emp.uoExecucao !== emp.lotacao && emp.uoExecucao !== emp.uoExecucaoCodigo) {
+        contagem[emp.uoExecucao] = (contagem[emp.uoExecucao] || 0) + 1;
+      }
+
       // 3. Departamento original
       if (emp.departamentoOriginal) {
         const deptNorm = emp.departamentoOriginal.toUpperCase().trim();
