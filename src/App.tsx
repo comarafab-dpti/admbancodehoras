@@ -4,6 +4,7 @@ import { storageService } from './shared/services/storageService';
 import { dbService, BatchProgressInfo } from './shared/services/dbService';
 import { seedService } from './shared/services/seedService';
 import { auth, onAuthStateChanged, getRedirectResult, firebaseSignOut, FirebaseUser, isPermissionError, isQuotaError, testConnection, getActiveRealtimeChannelCount } from './shared/services/db';
+import { supabase } from './shared/services/supabase';
 import { authService, getAuthErrorMessage } from './shared/services/authService';
 import { queryCache } from './shared/services/queryCache';
 
@@ -25,7 +26,7 @@ import {
 } from './shared/services/competenciaEngine';
 import { useInactivityTimeout } from './shared/hooks/useInactivityTimeout';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
-import { CheckCircle2, AlertCircle, Cloud, RefreshCw, X, Database, ShieldAlert, BookOpen, ArrowLeft, LogOut, Lock } from 'lucide-react';
+import { CheckCircle2, AlertCircle, AlertTriangle, Cloud, RefreshCw, X, Database, ShieldAlert, BookOpen, ArrowLeft, LogOut, Lock } from 'lucide-react';
 
 const LookerDashboard = lazy(() => import('./admin/LookerDashboard').then((module) => ({ default: module.LookerDashboard })));
 const EmployeeManagement = lazy(() => import('./admin/EmployeeManagement').then((module) => ({ default: module.EmployeeManagement })));
@@ -168,9 +169,9 @@ function AppContent() {
   const [previewRecordDate, setPreviewRecordDate] = useState<string | undefined>();
 
   // Toast notification
-  const [toastMessage, setToastMessage] = useState<{ text: string; type?: 'success' | 'error' | 'info' } | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type?: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
-  const showToast = useCallback((text: string, type: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = useCallback((text: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 4000);
   }, []);
@@ -646,10 +647,35 @@ function AppContent() {
             displayName: user.displayName || processed.admin.nome,
             role: processed.isSuperAdmin ? 'SUPER_ADMIN' : processed.admin.nivelAcesso,
             cargo: processed.admin.cargo,
+            sede: processed.admin.sede || processed.admin.canteiroSede || processed.admin.canteiroCodigo,
+            canteiroSede: processed.admin.canteiroSede || processed.admin.sede,
+            canteiroCodigo: processed.admin.canteiroCodigo || processed.admin.sede,
+            canteiroId: processed.admin.canteiroCodigo || processed.admin.sede,
             uoGestao: processed.admin.uoGestao,
             loginTime: new Date().toISOString(),
             photoURL: user.photoURL || processed.admin.foto,
           };
+
+          // Verificação de sincronia entre os claims do JWT e o perfil atual em admin_users
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const jwtUser = sessionData?.session?.user;
+            const jwtRole = jwtUser?.app_metadata?.nivel_acesso || jwtUser?.app_metadata?.role;
+            const currentDbRole = processed.admin.nivelAcesso || processed.admin.role;
+
+            if (jwtRole && currentDbRole && jwtRole !== currentDbRole && !processed.isSuperAdmin) {
+              console.info(`[Auth Sync] Discrepância detectada entre JWT (${jwtRole}) e admin_users (${currentDbRole}). Atualizando sessão...`);
+              const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+              const refreshedJwtRole = refreshedSession?.session?.user?.app_metadata?.nivel_acesso || refreshedSession?.session?.user?.app_metadata?.role;
+
+              if (refreshError || (refreshedJwtRole && refreshedJwtRole !== currentDbRole)) {
+                showToast('Suas permissões foram atualizadas. Faça logout e login novamente.', 'warning');
+              }
+            }
+          } catch (jwtCheckErr) {
+            console.warn('[Auth Sync] Aviso ao verificar claims do JWT:', jwtCheckErr);
+          }
+
           setPendingAccessUser(null);
           setCurrentUser(prev => {
             if (prev && prev.uid === appUser.uid && prev.email === appUser.email && prev.role === appUser.role) {
@@ -1957,6 +1983,8 @@ function AppContent() {
           } px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-2.5 text-xs font-semibold animate-in slide-in-from-bottom-5 duration-200`}>
             {toastMessage.type === 'error' ? (
               <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            ) : toastMessage.type === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
             ) : (
               <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             )}
@@ -2050,6 +2078,8 @@ function AppContent() {
         } px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-2.5 text-xs font-semibold animate-in slide-in-from-bottom-5 duration-200`}>
           {toastMessage.type === 'error' ? (
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          ) : toastMessage.type === 'warning' ? (
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
           ) : (
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
           )}
@@ -2326,12 +2356,12 @@ function AppContent() {
 
           {activeTab === 'contracheques' && (
             <ProtectedRoute
-              allowedRoles={['SUPER_ADMIN', 'RH_ADMIN', 'GESTOR_RH']}
+              allowedRoles={['SUPER_ADMIN', 'RH_ADMIN', 'CHEFE_DA', 'AUX_DA']}
               currentUserRole={userRole}
               currentUser={currentUser}
               onRedirectToDashboard={() => setActiveTab('dashboard')}
               fallbackTitle="Gestão de Folha & Contracheques Restrita"
-              fallbackMessage="A importação da folha de pagamento e gestão de espelhos de contracheque são exclusivas da equipe central de RH (Sede) e TI."
+              fallbackMessage="Acesso restrito à equipe de RH, TI e aos responsáveis/auxiliares pelo destacamento/canteiro."
             >
               <ContrachequesManagement
                 employees={employees}

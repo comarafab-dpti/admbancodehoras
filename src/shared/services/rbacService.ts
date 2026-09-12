@@ -182,6 +182,10 @@ export const rbacService = {
     return this.hasGlobalAccess(role);
   },
 
+  isGlobalAdmin(role?: AdminRole | string): boolean {
+    return this.hasGlobalAccess(role);
+  },
+
   /**
    * Identifica se o usuário opera na interface simplificada de campo
    * (CHEFE_CANTEIRO, CHEFE_DA, AUX_DA)
@@ -285,11 +289,10 @@ export const rbacService = {
   },
 
   /**
-   * Checa se o usuário pode gerenciar contracheques e importação da folha.
-   * O auxiliar de DA herda a capacidade operacional de entrada de dados
-   * administrativa do DA, com a interface menor e mais simples.
+   * Checa se o usuário pode visualizar contracheques do seu canteiro/escopo.
+   * (SUPER_ADMIN, RH_ADMIN, CHEFE_DA, AUX_DA)
    */
-  canManagePaystubs(role?: AdminRole | string): boolean {
+  canViewContracheques(role?: AdminRole | string): boolean {
     if (!role) return false;
     const r = this.normalizeRole(role);
     return (
@@ -300,8 +303,26 @@ export const rbacService = {
     );
   },
 
+  /**
+   * Checa se o usuário pode gerenciar contracheques (importação de folha em lote e exclusão).
+   * Restrito à equipe central de RH e TI (SUPER_ADMIN, RH_ADMIN).
+   */
+  canManageFolha(role?: AdminRole | string): boolean {
+    if (!role) return false;
+    const r = this.normalizeRole(role);
+    return r === 'SUPER_ADMIN' || r === 'RH_ADMIN';
+  },
+
+  /**
+   * Checa se o usuário pode gerenciar contracheques e importação da folha (legado).
+   * O auxiliar de DA herda a capacidade operacional de visualização do DA.
+   */
+  canManagePaystubs(role?: AdminRole | string): boolean {
+    return this.canViewContracheques(role);
+  },
+
   canImportFolha(role?: AdminRole | string): boolean {
-    return this.canManagePaystubs(role);
+    return this.canManageFolha(role);
   },
 
   /**

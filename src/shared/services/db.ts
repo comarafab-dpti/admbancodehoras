@@ -302,11 +302,57 @@ function makeQuerySnap(table: string, rows: Array<{ id: string; data: Record<str
 // EXECUÇÃO DE CONSULTAS
 // ============================================================================
 
-function applyFilters(sel: any, q: QueryShape) {
+export function applyFilters(sel: any, q: QueryShape) {
   for (const f of q.filters) {
-    const column = `data->>${f.field}`;
-    const op = f.op === '==' ? 'eq' : f.op;
-    sel = sel.filter(column, op, f.value);
+    const column = f.field === 'id' ? 'id' : (f.field.startsWith('data->') ? f.field : `data->>${f.field}`);
+    switch (f.op) {
+      case '==':
+      case 'eq':
+        sel = sel.eq(column, f.value);
+        break;
+      case '!=':
+      case 'neq':
+        sel = sel.neq(column, f.value);
+        break;
+      case '>=':
+      case 'gte':
+        sel = sel.gte(column, f.value);
+        break;
+      case '<=':
+      case 'lte':
+        sel = sel.lte(column, f.value);
+        break;
+      case '>':
+      case 'gt':
+        sel = sel.gt(column, f.value);
+        break;
+      case '<':
+      case 'lt':
+        sel = sel.lt(column, f.value);
+        break;
+      case 'in':
+        sel = sel.in(column, Array.isArray(f.value) ? f.value : [f.value]);
+        break;
+      case 'ilike':
+        sel = sel.ilike(column, f.value);
+        break;
+      case 'like':
+        sel = sel.like(column, f.value);
+        break;
+      default: {
+        const opMap: Record<string, string> = {
+          '==': 'eq',
+          '!=': 'neq',
+          '>=': 'gte',
+          '<=': 'lte',
+          '>': 'gt',
+          '<': 'lt',
+        };
+        const mappedOp = opMap[f.op] || f.op;
+        sel = sel.filter(column, mappedOp, f.value);
+        break;
+      }
+    }
   }
   return sel;
 }
@@ -581,15 +627,15 @@ function realtimeRowMatches(row: { data?: Record<string, any> }, q: QueryShape):
   return q.filters.every((filter) => {
     const actual = realtimeFieldValue(row, filter.field);
     const expected = filter.value;
-    if (filter.op === '==') return String(actual ?? '') === String(expected ?? '');
-    if (filter.op === '!=') return String(actual ?? '') !== String(expected ?? '');
+    if (filter.op === '==' || filter.op === 'eq') return String(actual ?? '') === String(expected ?? '');
+    if (filter.op === '!=' || filter.op === 'neq') return String(actual ?? '') !== String(expected ?? '');
 
     const left = actual == null ? '' : actual;
     const right = expected == null ? '' : expected;
-    if (filter.op === '>') return left > right;
-    if (filter.op === '>=') return left >= right;
-    if (filter.op === '<') return left < right;
-    if (filter.op === '<=') return left <= right;
+    if (filter.op === '>' || filter.op === 'gt') return left > right;
+    if (filter.op === '>=' || filter.op === 'gte') return left >= right;
+    if (filter.op === '<' || filter.op === 'lt') return left < right;
+    if (filter.op === '<=' || filter.op === 'lte') return left <= right;
     return true;
   });
 }

@@ -38,9 +38,13 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
    1. `supabase/migrations/001_schema.sql` (Estrutura de tabelas e índices)
    2. `supabase/migrations/002_rls.sql` (Políticas de segurança RLS)
    3. `supabase/migrations/004_auth_claims_trigger.sql` (Triggers de Custom Claims e RBAC)
-   4. `supabase/migrations/006_fix_permissions_and_invoker.sql` (Correção definitiva de permissões RLS e eliminação de avisos)
+   4. `supabase/migrations/006_fix_permissions_and_invoker.sql` (Correção de permissões RLS e eliminação de avisos)
+   5. `supabase/migrations/008_fix_rls_recursion.sql` (Correção crítica da recursão RLS no `admin_users`, erro 54001 e eliminação do erro 42501)
+   6. `supabase/migrations/009_flexible_canteiro_match.sql` (Match flexível de canteiros nas funções RLS para contracheques e documentos)
 
-   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql` e `006_fix_permissions_and_invoker.sql`).*
+   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql`, `006_fix_permissions_and_invoker.sql`, `008_fix_rls_recursion.sql` e `009_flexible_canteiro_match.sql`).*
+
+   ⚠️ **CRÍTICO:** A migração `008_fix_rls_recursion.sql` **DEVE ser aplicada no SQL Editor do Supabase antes de qualquer novo teste operacional**. Sem ela, perfis não-master (especialmente `AUX_DA`) enfrentam estouro de pilha (`54001: stack depth limit exceeded`) ao consultar `admin_users`.
 
    **Verificação de Saúde (Sanity Check):**
    Após executar as migrações, execute o script `scripts/check-supabase-setup.sql` no SQL Editor para confirmar que todas as tabelas, RLS, políticas de segurança, hardening contra avisos do Linter e triggers de Custom Claims estão ativos.
@@ -150,3 +154,47 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
   Devtools só é montado quando `import.meta.env.DEV` está ativo.
 - `React.memo` foi aplicado às telas de dashboard, colaboradores e
   contracheques. O cache manual continua sendo usado pelas demais leituras.
+
+## Onda 2B — Match Flexível de Canteiro e Permissões de Contracheque
+
+- **`supabase/migrations/009_flexible_canteiro_match.sql`**:
+  - Resolve a restrição estrita de igualdade nas funções RLS `contracheque_canteiro_permitido`, `documento_do_meu_canteiro` e `canteiro_permitido`.
+  - Contracheques e registros legados com sufixos ou prefixos de destacamento (como `KO-DL`, `DECO-MN`, `BE-SEDE`) agora são corretamente validados contra o canteiro do usuário (`meu_canteiro()`), considerando também o campo `secaoCanteiro`.
+  - Garante que operadores locais de canteiro (como `AUX_DA` em Coari/KO) consigam listar todos os contracheques pertencentes à sua unidade territorial.
+- **Regras Operacionais de Contracheques na UI (`ContrachequesManagement.tsx`)**:
+  - **AUX_DA e CHEFE_DA**: permissão irrestrita para visualizar (`Eye`) e imprimir / baixar espelho digital (`Printer` / `window.print()`).
+  - **Importação e Exclusão**: botões "Importar Folha (PDF)" e "Excluir Contracheque" (`Trash2`) permanecem estritamente restritos a perfis globais (`RH_ADMIN` e `SUPER_ADMIN`).
+- **Validação de Variáveis de Ambiente (`src/shared/services/supabase.ts`)**:
+  - Em produção (`import.meta.env.PROD`), a aplicação não utiliza fallbacks mascarados e interrompe a inicialização com mensagem descritiva caso `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY` não estejam definidas.
+  - Em desenvolvimento e suítes de testes unitários locais, mantém-se o fallback para permitir a execução automatizada sem dependência de credenciais reais.
+
+## Onda 2C — Criação de Usuários no Supabase Auth e Sincronização RBAC
+
+- **Problema resolvido**:
+  - Anteriormente, cadastros criados em `AdminPermissionsManagement.tsx` eram gravados apenas em `admin_users`. O usuário não existia em `auth.users`, ficando impossibilitado de logar ou recuperar senha.
+- **Edge Functions criadas**:
+  1. `supabase/functions/create-admin-user/index.ts`:
+     - Acionada ao cadastrar um novo usuário.
+     - Utiliza `supabase.auth.admin.createUser({ email, email_confirm: true })` com a `SUPABASE_SERVICE_ROLE_KEY`.
+     - Gera senha temporária segura (ou usa a fornecida), atribui `must_change_password: true` e grava claims no `app_metadata` (`nivel_acesso`, `role`, `canteiro_sede`, `status`).
+     - Sincroniza o registro correspondente em `admin_users` e `usuarios_sistema`.
+  2. `supabase/functions/update-admin-user/index.ts`:
+     - Acionada ao editar dados ou perfis de usuários existentes.
+     - Atualiza os registros nas tabelas documentais e reflete as alterações no `app_metadata` de `auth.users`.
+     - Se o perfil (`nivel_acesso` / `role`), canteiro (`canteiro_sede`) ou `status` for alterado, chama `supabase.auth.admin.signOut(userId)` para invalidar sessões ativas e forçar a renovação do token JWT.
+- **Variáveis de Ambiente das Edge Functions**:
+  - `SUPABASE_URL`: URL do projeto Supabase (injetada automaticamente pelo Supabase no ambiente de functions).
+  - `SUPABASE_SERVICE_ROLE_KEY`: Chave secreta de serviço com privilégios administrativos. **CRÍTICO: Deve ser configurada apenas nas secrets das Edge Functions no painel do Supabase (`supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...`) e NUNCA exposta no frontend Vite / `.env` público.**
+- **Como publicar as Edge Functions via Supabase CLI**:
+  ```bash
+  supabase functions deploy create-admin-user --no-verify-jwt
+  supabase functions deploy update-admin-user --no-verify-jwt
+  ```
+- **Fallback Gracioso no Cliente (`dbService.saveAdminUser`)**:
+  - Caso as Edge Functions ainda não tenham sido deployadas ou ocorra indisponibilidade temporária de rede, o cliente salva normalmente em `admin_users`/`usuarios_sistema` e exibe aviso amigável: *"Usuário não foi criado no Auth. Contate o suporte."*, impedindo que a aplicação trave.
+- **Detecção de Mudança de Perfil Próprio no `App.tsx`**:
+  - No fluxo de autenticação do `App.tsx`, o perfil contido no JWT (`auth.jwt().app_metadata.nivel_acesso`) é comparado com o perfil do documento `admin_users`.
+  - Em caso de divergência, é chamado `supabase.auth.refreshSession()`.
+  - Se a discrepância persistir após o refresh, a interface exibe um toast de aviso: *"Suas permissões foram atualizadas. Faça logout e login novamente."*
+
+

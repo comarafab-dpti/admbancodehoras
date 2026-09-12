@@ -356,7 +356,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
     };
 
     try {
-      await dbService.saveAdminUser(adminData);
+      const saveResult = await dbService.saveAdminUser(adminData);
 
       // Local State immediate update
       setAdmins(prev => {
@@ -402,10 +402,18 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
         recursoId: adminData.email,
       });
 
-      setFeedbackMsg(editingAdmin 
+      let successMsg = editingAdmin 
         ? `Usuário "${adminData.nome}" atualizado com sucesso!` 
-        : `Pré-cadastro de "${adminData.nome}" concluído com sucesso!`
-      );
+        : `Usuário "${adminData.nome}" cadastrado com sucesso!`;
+
+      if (saveResult?.tempPassword) {
+        successMsg += ` Senha temporária: ${saveResult.tempPassword}`;
+      }
+      if (saveResult?.warning) {
+        successMsg += ` (Aviso: ${saveResult.warning})`;
+      }
+
+      setFeedbackMsg(successMsg);
 
       // Switch to the user's tab automatically
       if (adminData.status === 'pendente') {

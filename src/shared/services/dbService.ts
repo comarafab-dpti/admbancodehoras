@@ -16,6 +16,7 @@ import {
   Unsubscribe 
 } from './db';
 import { auth, db, logDbError, handleDbError, OperationType, isPermissionError } from './db';
+import { supabase } from './supabase';
 import { Employee, TimeRecord, AdminUser, AdminRole, InsalubrityRecord, SystemConfig, ConstructionSite, PaystubRecord, DispensaSptfRecord, AuditLog } from '../types';
 import { hashPassword, autoSeedDefaultAdminMaster, authService } from './authService';
 import { canteiroService } from './canteiroService';
@@ -1316,13 +1317,16 @@ export const dbService = {
   // RBAC & ADMIN USERS
   // -------------------------------------------------------------
 
-  async saveAdminUser(adminUser: AdminUser): Promise<void> {
+  async saveAdminUser(adminUser: AdminUser): Promise<{ success: boolean; tempPassword?: string | null; warning?: string }> {
     const docId = adminUser.email.trim().toLowerCase();
     const path = `${COLLECTIONS.ADMIN_USERS}/${docId}`;
     try {
       await this.ensureAuthenticatedWriteSession();
       const resolvedStatus = adminUser.status || (adminUser.ativo === false ? 'inativo' : 'ativo');
       const resolvedPerfil = adminUser.perfil || adminUser.role || adminUser.nivelAcesso || 'nenhum';
+      const resolvedRole = adminUser.role || adminUser.nivelAcesso || 'GESTOR_RH';
+      const resolvedSede = adminUser.canteiroSede || adminUser.sede || 'TODAS';
+
       const dataToSave: Record<string, any> = {
         id: docId,
         email: docId,
@@ -1332,14 +1336,14 @@ export const dbService = {
         saram: adminUser.saram || '',
         nomeGuerra: adminUser.nomeGuerra || '',
         postoGraduacao: adminUser.postoGraduacao || '',
-        canteiroSede: adminUser.canteiroSede || adminUser.sede || 'TODAS',
+        canteiroSede: resolvedSede,
         tituloImpressao: adminUser.tituloImpressao || '',
-        role: adminUser.role || adminUser.nivelAcesso || 'GESTOR_RH',
-        nivelAcesso: adminUser.nivelAcesso || adminUser.role || 'GESTOR_RH',
+        role: resolvedRole,
+        nivelAcesso: resolvedRole,
         status: resolvedStatus,
         perfil: resolvedPerfil,
         foto: adminUser.foto || null,
-        sede: adminUser.sede || adminUser.canteiroSede || 'TODAS',
+        sede: resolvedSede,
         ativo: adminUser.ativo !== false && resolvedStatus === 'ativo',
         desativacaoAgendada: adminUser.desativacaoAgendada || null,
         transicaoStatus: adminUser.transicaoStatus || (adminUser.desativacaoAgendada ? 'PENDENTE_48H' : 'ATIVO'),
@@ -1351,12 +1355,66 @@ export const dbService = {
       if (adminUser.passwordHash) {
         dataToSave.passwordHash = adminUser.passwordHash;
       }
-      
-      // Salva de forma sincronizada na coleção usuarios_sistema e admin_users (estritamente separadas de colaboradores)
+
+      // 1. Verifica se o usuário já existe na base documental admin_users
+      const existingDocSnap = await getDoc(doc(db, COLLECTIONS.ADMIN_USERS, docId));
+      const userExistsInDb = existingDocSnap.exists();
+
+      let edgeFunctionResult: { success: boolean; tempPassword?: string | null; warning?: string } = {
+        success: true,
+      };
+
+      // 2. Tenta invocar a Edge Function correspondente no Supabase para sincronizar auth.users
+      try {
+        if (!userExistsInDb) {
+          // Criação: chama Edge Function create-admin-user
+          const { data, error } = await supabase.functions.invoke('create-admin-user', {
+            body: {
+              email: docId,
+              nome: dataToSave.nome,
+              nivel_acesso: resolvedRole,
+              canteiro_sede: resolvedSede,
+              status: resolvedStatus,
+            },
+          });
+
+          if (error) {
+            console.warn('[RBAC] Edge Function create-admin-user retornou erro:', error);
+            edgeFunctionResult.warning = 'Usuário não foi criado no Auth. Contate o suporte.';
+          } else if (data) {
+            edgeFunctionResult.tempPassword = data.tempPassword || null;
+            if (data.error) {
+              edgeFunctionResult.warning = data.error;
+            }
+          }
+        } else {
+          // Atualização: chama Edge Function update-admin-user
+          const { data, error } = await supabase.functions.invoke('update-admin-user', {
+            body: {
+              email: docId,
+              campos: dataToSave,
+            },
+          });
+
+          if (error) {
+            console.warn('[RBAC] Edge Function update-admin-user retornou erro:', error);
+            edgeFunctionResult.warning = 'Alterações gravadas no banco, mas não sincronizadas no Auth.';
+          } else if (data?.error) {
+            edgeFunctionResult.warning = data.error;
+          }
+        }
+      } catch (fnErr: any) {
+        console.warn('[RBAC] Falha na chamada da Edge Function, aplicando fallback local:', fnErr?.message || fnErr);
+        edgeFunctionResult.warning = 'Usuário não foi criado no Auth. Contate o suporte.';
+      }
+
+      // 3. Persistência garantida na camada documental (admin_users e usuarios_sistema)
       await Promise.all([
         setDoc(doc(db, COLLECTIONS.ADMIN_USERS, docId), dataToSave, { merge: true }),
-        setDoc(doc(db, COLLECTIONS.USUARIOS_SISTEMA, docId), dataToSave, { merge: true })
+        setDoc(doc(db, COLLECTIONS.USUARIOS_SISTEMA, docId), dataToSave, { merge: true }),
       ]);
+
+      return edgeFunctionResult;
     } catch (error) {
       logDbError(error, OperationType.WRITE, path);
       throw error;
