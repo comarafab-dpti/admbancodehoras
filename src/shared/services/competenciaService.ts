@@ -901,7 +901,7 @@ export const competenciaService = {
         collection(db, COLLECTIONS.INSALUBRIDADE),
         where('dataEvento', '>=', dataInicio),
         where('dataEvento', '<=', dataFim),
-        where('branch', '==', normalizedCanteiro)
+        where('sedeCodigo', '==', normalizedCanteiro)
       );
     } else {
       q = query(

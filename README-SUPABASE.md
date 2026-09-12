@@ -103,3 +103,36 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
   como array jsonb dentro de `contracheques.data.rubricas` (como no legado).
   A normalização em tabela própria pode ser feita depois sem impacto no app.
 - Comentários no código podem citar o Firestore como referência histórica.
+
+## Fase 2 — performance frontend
+
+- O painel usa `React.lazy`/`Suspense` para telas e modais administrativos. A
+  importação de PDF também é isolada; `pdfjs-dist` só é carregado ao abrir o
+  fluxo de contracheques.
+- `vite.config.ts` separa os chunks `vendor`, `supabase`, `pdf` e `csv`. No
+  build medido em setembro de 2026, o chunk inicial caiu de 2,37 MB (592,54 KB
+  gzip) para 319 KB (80,19 KB gzip). O chunk `pdf` ficou separado em 482 KB
+  (143,90 KB gzip) e não participa do boot.
+- `src/shared/services/db.ts` expõe `getDocsPage`, usando `count: 'exact'` e
+  `.range()` com páginas de até 100 registros. `dbService.getEmployeesPage`
+  fornece a primeira adoção tipada dessa primitive; a migração das telas que
+  dependem de arrays globais permanece planejada para a próxima fase.
+- As queries de performance exibem `console.time` somente quando
+  `import.meta.env.DEV` está ativo.
+- O filtro de insalubridade por competência usa `sedeCodigo`, o campo
+  canônico. Dados legados continuam sendo normalizados na leitura quando
+  necessário.
+
+## Fase 3 — cache e cálculo consolidado
+
+- `src/shared/services/queryCache.ts` mantém páginas em memória por 30 segundos
+  para dados quentes e 5 minutos para catálogos/configuração. Upsert, delete,
+  batch e transações invalidam o prefixo da coleção afetada.
+- A tela de contracheques já consulta 20 itens por página com `count: 'exact'`,
+  `.range()` e filtros de matrícula, competência e sede.
+- `src/shared/utils/saldo.ts` calcula os saldos em uma única passagem indexada
+  por matrícula. Dashboard e gestão de colaboradores usam o mapa memoizado.
+- `supabase/migrations/007_composite_indexes.sql` contém os índices compostos
+  da Fase 3. Execute-a no SQL Editor do Supabase; ela não altera RLS/policies.
+- As demais telas CRUD ainda dependem de arrays globais para relatórios e
+  cálculos; sua migração incremental fica registrada como próximo passo.

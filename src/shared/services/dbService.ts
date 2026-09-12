@@ -2,6 +2,7 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDocsPage,
   getDoc,
   setDoc, 
   updateDoc, 
@@ -218,6 +219,14 @@ export function prepareDispensaSptfForDb(d: Partial<DispensaSptfRecord>): Record
 }
 
 export const dbService = {
+  async getCollectionPage(
+    collectionName: string,
+    page = 1,
+    pageSize = 50,
+    constraints: any[] = [],
+  ) {
+    return getDocsPage(query(collection(db, collectionName), ...constraints), page, pageSize);
+  },
   async ensureAuthenticatedWriteSession(): Promise<void> {
     if (auth.currentUser) return;
 
@@ -236,7 +245,8 @@ export const dbService = {
   subscribeEmployees(
     onSuccess: (employees: Employee[]) => void,
     onError?: (error: Error) => void,
-    canteiroId?: string
+    canteiroId?: string,
+    realtime = true
   ): Unsubscribe {
     const path = COLLECTIONS.COLABORADORES;
     try {
@@ -269,7 +279,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error: any) {
       logDbError(error, OperationType.LIST, path);
@@ -282,7 +293,8 @@ export const dbService = {
     onSuccess: (records: TimeRecord[]) => void,
     onError?: (error: Error) => void,
     canteiroId?: string,
-    matricula?: string
+    matricula?: string,
+    realtime = true
   ): Unsubscribe {
     const path = COLLECTIONS.LANCAMENTOS;
     try {
@@ -375,7 +387,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error: any) {
       logDbError(error, OperationType.LIST, path);
@@ -473,7 +486,8 @@ export const dbService = {
 
   subscribeAdmins(
     onSuccess: (admins: AdminUser[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    realtime = true
   ): Unsubscribe {
     const path = COLLECTIONS.ADMIN_USERS;
     try {
@@ -518,7 +532,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error: any) {
       logDbError(error, OperationType.LIST, path);
@@ -627,6 +642,18 @@ export const dbService = {
       logDbError(error, OperationType.GET, path);
       return [];
     }
+  },
+
+  async getEmployeesPage(page = 1, pageSize = 25, canteiroId?: string) {
+    const constraints: any[] = [orderBy('nome', 'asc')];
+    if (canteiroId && canteiroId !== 'TODAS' && canteiroId !== 'TODOS') {
+      constraints.unshift(where('sedeCodigo', '==', canteiroId));
+    }
+    const result = await this.getCollectionPage(COLLECTIONS.COLABORADORES, page, pageSize, constraints);
+    return {
+      ...result,
+      items: result.snapshot.docs.map((docSnap) => mapEmployeeDocument(docSnap.data(), docSnap.id)),
+    };
   },
 
   async getTimeRecords(): Promise<TimeRecord[]> {
@@ -933,7 +960,8 @@ export const dbService = {
       matricula?: string;
       startDate?: string;
       endDate?: string;
-    }
+    },
+    realtime = true
   ): Unsubscribe {
     const path = COLLECTIONS.INSALUBRIDADE;
     try {
@@ -1034,7 +1062,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error: any) {
       logDbError(error, OperationType.LIST, path);
@@ -1201,7 +1230,8 @@ export const dbService = {
 
   subscribeSystemConfig(
     onSuccess: (config: SystemConfig) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    realtime = true
   ): Unsubscribe {
     const path = `${COLLECTIONS.SYSTEM_CONFIG}/global`;
     try {
@@ -1230,7 +1260,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.GET, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error: any) {
       logDbError(error, OperationType.GET, path);
@@ -1398,9 +1429,10 @@ export const dbService = {
 
   subscribeConstructionSites(
     onSuccess: (sites: ConstructionSite[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    realtime = true
   ): Unsubscribe {
-    return canteiroService.subscribeCanteiros(onSuccess, onError);
+    return canteiroService.subscribeCanteiros(onSuccess, onError, realtime);
   },
 
   async getConstructionSites(): Promise<ConstructionSite[]> {
@@ -1460,7 +1492,8 @@ export const dbService = {
     onSuccess: (paystubs: PaystubRecord[]) => void,
     onError?: (error: Error) => void,
     canteiroId?: string,
-    matricula?: string
+    matricula?: string,
+    realtime = true
   ): Unsubscribe {
     const path = COLLECTIONS.CONTRACHEQUES;
     try {
@@ -1522,7 +1555,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error) {
       logDbError(error, OperationType.LIST, path);
@@ -1612,7 +1646,8 @@ export const dbService = {
   subscribeDispensasSptf(
     onSuccess: (dispensas: DispensaSptfRecord[]) => void,
     onError?: (error: Error) => void,
-    canteiroId?: string
+    canteiroId?: string,
+    realtime = true
   ): Unsubscribe {
     const path = COLLECTIONS.DISPENSAS_SPTF;
     try {
@@ -1671,7 +1706,8 @@ export const dbService = {
         (error) => {
           logDbError(error, OperationType.LIST, path);
           if (onError) onError(error);
-        }
+        },
+        { realtime }
       );
     } catch (error: any) {
       logDbError(error, OperationType.LIST, path);

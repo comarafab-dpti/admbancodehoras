@@ -1,9 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Employee, PaystubRecord, AdminRole, ConstructionSite } from '@/src/shared/types';
-import { ContrachequeMirrorView } from './ContrachequeMirrorView';
-import { ImportContrachequeModal } from './ImportContrachequeModal';
-import { normalizeMatricula } from '@/src/shared/utils/pdfParser';
+import { lazy } from 'react';
+import { normalizeMatricula } from '@/src/shared/utils/matriculaUtils';
+import { dbService } from '@/src/shared/services/dbService';
+import { orderBy, where } from '@/src/shared/services/db';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
+
+const ContrachequeMirrorView = lazy(() => import('./ContrachequeMirrorView').then((module) => ({ default: module.ContrachequeMirrorView })));
+const ImportContrachequeModal = lazy(() => import('./ImportContrachequeModal').then((module) => ({ default: module.ImportContrachequeModal })));
 import { 
   FileText, 
   UploadCloud, 
@@ -54,6 +58,57 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMesAno, setSelectedMesAno] = useState<string>('TODOS');
   const [selectedSede, setSelectedSede] = useState<string>('TODAS');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [serverPaystubs, setServerPaystubs] = useState<PaystubRecord[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const constraints: any[] = [orderBy('competencia', 'desc')];
+    const normalizedSearch = searchTerm.trim().toUpperCase();
+    if (normalizedSearch) constraints.push(where('matricula', '==', normalizedSearch));
+    if (selectedMesAno !== 'TODOS') {
+      const [mes, ano] = selectedMesAno.split('-');
+      if (mes && ano) constraints.push(where('competencia', '==', `${ano}-${mes.padStart(2, '0')}`));
+    }
+    if (selectedSede !== 'TODAS') constraints.push(where('sede', '==', selectedSede));
+
+    setIsPageLoading(true);
+    dbService.getCollectionPage('contracheques', currentPage, 20, constraints)
+      .then((result) => {
+        if (cancelled) return;
+        const items = result.snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            matricula: data.matricula || '', nome: data.nome || '', cargo: data.cargo || '',
+            sede: data.sede || 'KO-DL', periodo: data.periodo || '', mesAno: data.mesAno || '',
+            ano: Number(data.ano || 2026), mes: Number(data.mes || 1), dataInicio: data.dataInicio || '', dataFim: data.dataFim || '',
+            cpf: data.cpf || '', banco: data.banco || '', agencia: data.agencia || '', conta: data.conta || '',
+            rubricas: Array.isArray(data.rubricas) ? data.rubricas : [], totalProventos: Number(data.totalProventos || 0),
+            totalDescontos: Number(data.totalDescontos || 0), valorLiquido: Number(data.valorLiquido || 0),
+            salarioBase: data.salarioBase !== undefined ? Number(data.salarioBase) : undefined,
+            baseInss: data.baseInss !== undefined ? Number(data.baseInss) : undefined,
+            baseFgts: data.baseFgts !== undefined ? Number(data.baseFgts) : undefined,
+            fgtsMes: data.fgtsMes !== undefined ? Number(data.fgtsMes) : undefined,
+            baseIrrf: data.baseIrrf !== undefined ? Number(data.baseIrrf) : undefined,
+            importadoEm: data.importadoEm || '', importadoPorEmail: data.importadoPorEmail || '', observacoes: data.observacoes || '',
+          } as PaystubRecord;
+        });
+        setServerPaystubs(items);
+        setServerTotal(result.total);
+        setIsPageLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setServerPaystubs([]);
+          setServerTotal(0);
+          setIsPageLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [currentPage, searchTerm, selectedMesAno, selectedSede]);
 
   // Obter lista única de competências (mesAno) disponíveis
   const availableMesAnos = useMemo(() => {
@@ -70,7 +125,7 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
     const term = searchTerm.toLowerCase().trim();
     const normTerm = normalizeMatricula(term);
 
-    return paystubs.filter((p) => {
+    return serverPaystubs.filter((p) => {
       const matchSearch =
         !term ||
         p.nome.toLowerCase().includes(term) ||
@@ -83,7 +138,9 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
 
       return matchSearch && matchMes && matchSede;
     });
-  }, [paystubs, searchTerm, selectedMesAno, selectedSede]);
+  }, [paystubs, serverPaystubs, serverTotal, searchTerm, selectedMesAno, selectedSede]);
+
+  const totalPages = Math.max(1, Math.ceil(serverTotal / 20));
 
   // Estatísticas Consolidadas
   const totalBruto = useMemo(() => filteredPaystubs.reduce((acc, p) => acc + p.totalProventos, 0), [filteredPaystubs]);
@@ -213,7 +270,7 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setCurrentPage(1); setSearchTerm(e.target.value); }}
             placeholder="Buscar matrícula, servidor, cargo..."
             className={`w-full pl-9 pr-3 py-2 rounded-xl text-xs border ${
               isDark ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
@@ -227,7 +284,7 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
             <span className="text-slate-400 font-medium hidden sm:inline">Mês/Ano:</span>
             <select
               value={selectedMesAno}
-              onChange={(e) => setSelectedMesAno(e.target.value)}
+              onChange={(e) => { setCurrentPage(1); setSelectedMesAno(e.target.value); }}
               className={`py-2 px-3 rounded-xl text-xs border font-mono ${
                 isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
               }`}
@@ -244,7 +301,7 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
             <span className="text-slate-400 font-medium hidden sm:inline">Sede:</span>
             <select
               value={selectedSede}
-              onChange={(e) => setSelectedSede(e.target.value)}
+              onChange={(e) => { setCurrentPage(1); setSelectedSede(e.target.value); }}
               className={`py-2 px-3 rounded-xl text-xs border font-mono ${
                 isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
               }`}
@@ -281,7 +338,9 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/40">
-              {filteredPaystubs.length > 0 ? (
+              {isPageLoading ? (
+                <tr><td colSpan={10} className="py-12 text-center text-slate-400">Carregando página...</td></tr>
+              ) : filteredPaystubs.length > 0 ? (
                 filteredPaystubs.map((p) => (
                   <tr 
                     key={p.id} 
@@ -361,6 +420,14 @@ export const ContrachequesManagement: React.FC<ContrachequesManagementProps> = (
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-700/40 px-4 py-3 text-xs text-slate-400">
+          <span>{serverTotal.toLocaleString('pt-BR')} registros</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => page - 1)} className="px-2 py-1 rounded border disabled:opacity-40">Anterior</button>
+            <span>Página {currentPage} de {totalPages}</span>
+            <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => page + 1)} className="px-2 py-1 rounded border disabled:opacity-40">Próxima</button>
+          </div>
         </div>
       </div>
 

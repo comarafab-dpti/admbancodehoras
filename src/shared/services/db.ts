@@ -17,6 +17,7 @@
  * documental; ver README-SUPABASE.md para o roteiro de normalização.
  */
 import { supabase } from './supabase';
+import { queryCache } from './queryCache';
 
 // ============================================================================
 // TIPOS E CONSTANTES
@@ -271,6 +272,13 @@ export interface QuerySnapshot {
   forEach: (cb: (d: DocumentSnapshot) => void) => void;
 }
 
+export interface PagedQueryResult {
+  snapshot: QuerySnapshot;
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 function makeSnap(table: string, id: string, data: Record<string, any> | null): DocumentSnapshot {
   return {
     id,
@@ -314,14 +322,53 @@ function applyOrders(sel: any, q: QueryShape) {
 }
 
 async function runQuery(q: QueryShape): Promise<QuerySnapshot> {
+  const timerLabel = `query:${q.__table}`;
+  if (import.meta.env.DEV) console.time(timerLabel);
   let sel = supabase.from(q.__table).select('id, data');
   sel = applyFilters(sel, q);
   sel = applyOrders(sel, q);
   if (q.limitN !== null) sel = sel.limit(q.limitN);
 
   const { data, error } = await sel;
+  if (import.meta.env.DEV) console.timeEnd(timerLabel);
   if (error) throw error;
   return makeQuerySnap(q.__table, (data ?? []) as any);
+}
+
+export async function getDocsPage(
+  target: CollectionReference | QueryShape,
+  page: number,
+  pageSize: number,
+): Promise<PagedQueryResult> {
+  const safePage = Math.max(1, Math.floor(page));
+  const safePageSize = Math.max(1, Math.min(100, Math.floor(pageSize)));
+  const q = (target as any).__kind === 'query'
+    ? target as QueryShape
+    : query(target as CollectionReference);
+  const from = (safePage - 1) * safePageSize;
+  const to = from + safePageSize - 1;
+  const cacheKey = `${q.__table}:page${safePage}:size${safePageSize}:${JSON.stringify({ filters: q.filters, orders: q.orders })}`;
+  const cached = queryCache.get<PagedQueryResult>(cacheKey);
+  if (cached) return cached;
+  const timerLabel = `query:${q.__table}:page:${safePage}`;
+  if (import.meta.env.DEV) console.time(timerLabel);
+
+  let sel = supabase.from(q.__table).select('id, data', { count: 'exact' });
+  sel = applyFilters(sel, q);
+  sel = applyOrders(sel, q);
+  const { data, error, count } = await sel.range(from, to);
+  if (import.meta.env.DEV) console.timeEnd(timerLabel);
+  if (error) throw error;
+
+  const result = {
+    snapshot: makeQuerySnap(q.__table, (data ?? []) as any),
+    total: count ?? 0,
+    page: safePage,
+    pageSize: safePageSize,
+  };
+  const coldTable = ['canteiros_obras', 'unidades_organizacionais', 'system_config', 'institution_settings'].includes(q.__table);
+  queryCache.set(cacheKey, result, coldTable ? 5 * 60_000 : 30_000);
+  return result;
 }
 
 // ============================================================================
@@ -362,6 +409,7 @@ async function upsertRow(ref: DocumentReference, payload: Record<string, any>): 
   const row = toRow(ref, payload);
   const { error } = await supabase.from(ref.__table).upsert(row);
   if (error) throw error;
+  queryCache.invalidate(`${ref.__table}:`);
 }
 
 async function mergeInto(ref: DocumentReference, partial: Record<string, any>): Promise<void> {
@@ -396,6 +444,7 @@ export async function updateDoc(ref: DocumentReference, data: Record<string, any
 export async function deleteDoc(ref: DocumentReference): Promise<void> {
   const { error } = await supabase.from(ref.__table).delete().eq('id', ref.__id);
   if (error) throw error;
+  queryCache.invalidate(`${ref.__table}:`);
 }
 
 export async function addDoc(collRef: CollectionReference, data: Record<string, any>): Promise<DocumentReference> {
@@ -441,6 +490,7 @@ export function writeBatch(_db: typeof db | any) {
         const rows = pureSets.slice(i, i + CHUNK).map((o) => toRow(o.ref, o.data!));
         const { error } = await supabase.from(pureSets[i].ref.__table).upsert(rows);
         if (error) throw error;
+        queryCache.invalidate(`${pureSets[i].ref.__table}:`);
       }
       // Operações de merge/update/delete precisam de leitura prévia
       for (const o of ops) {
@@ -495,6 +545,7 @@ export async function runTransaction(
     const rows = pureSets.slice(i, i + CHUNK).map((o) => toRow(o.ref, o.data!));
     const { error } = await supabase.from(pureSets[i].ref.__table).upsert(rows);
     if (error) throw error;
+    queryCache.invalidate(`${pureSets[i].ref.__table}:`);
   }
   for (const o of ops) {
     if (o.type === 'merge-set' || o.type === 'update') {
@@ -509,33 +560,82 @@ export async function runTransaction(
 // ON SNAPSHOT (leitura inicial + Supabase Realtime com refetch)
 // ============================================================================
 
+const activeRealtimeChannels = new Set<string>();
+
+export function getActiveRealtimeChannelCount(): number {
+  return activeRealtimeChannels.size;
+}
+
 function tableChannel(table: string) {
-  return supabase
-    .channel(`db-${table}-${Math.random().toString(36).slice(2, 8)}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table }, () => {});
+  const name = `db-${table}-${Math.random().toString(36).slice(2, 8)}`;
+  activeRealtimeChannels.add(name);
+  console.info(`[Realtime] canal aberto: ${name} (total: ${activeRealtimeChannels.size})`);
+  return supabase.channel(name);
+}
+
+function realtimeFieldValue(row: { data?: Record<string, any> }, field: string): any {
+  return row.data?.[field];
+}
+
+function realtimeRowMatches(row: { data?: Record<string, any> }, q: QueryShape): boolean {
+  return q.filters.every((filter) => {
+    const actual = realtimeFieldValue(row, filter.field);
+    const expected = filter.value;
+    if (filter.op === '==') return String(actual ?? '') === String(expected ?? '');
+    if (filter.op === '!=') return String(actual ?? '') !== String(expected ?? '');
+
+    const left = actual == null ? '' : actual;
+    const right = expected == null ? '' : expected;
+    if (filter.op === '>') return left > right;
+    if (filter.op === '>=') return left >= right;
+    if (filter.op === '<') return left < right;
+    if (filter.op === '<=') return left <= right;
+    return true;
+  });
+}
+
+function sortRealtimeRows(rows: Array<{ id: string; data: Record<string, any> }>, q: QueryShape) {
+  if (q.orders.length === 0) return rows;
+  return [...rows].sort((left, right) => {
+    for (const order of q.orders) {
+      const a = realtimeFieldValue(left, order.field);
+      const b = realtimeFieldValue(right, order.field);
+      const comparison = String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true });
+      if (comparison !== 0) return order.dir === 'asc' ? comparison : -comparison;
+    }
+    return 0;
+  });
 }
 
 export function onSnapshot(
   target: QueryShape | DocumentReference | CollectionReference,
   onSuccess: (snapshot: any) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  options?: { realtime?: boolean }
 ): Unsubscribe {
   const isDocRef = '__id' in target && !('__kind' in target);
   const table = target.__table as string;
   let disposed = false;
   let refetchTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentRows: Array<{ id: string; data: Record<string, any> }> = [];
+  let currentDocument: DocumentSnapshot | null = null;
 
   const refetch = async () => {
     if (disposed) return;
     try {
       if (isDocRef) {
         const snap = await getDoc(target as DocumentReference);
+        currentDocument = snap;
         if (!disposed) onSuccess(snap);
       } else {
         const q = (target as any).__kind === 'query'
           ? (target as QueryShape)
           : query(target as CollectionReference);
         const snap = await runQuery(q);
+        currentRows = snap.docs.map((document) => ({
+          id: document.id,
+          data: document.data() || {},
+        }));
         if (!disposed) onSuccess(snap);
       }
     } catch (err) {
@@ -548,17 +648,56 @@ export function onSnapshot(
     refetchTimer = setTimeout(refetch, 300);
   };
 
-  const channel = tableChannel(table);
-  channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefetch);
-  channel.subscribe();
-
   refetch();
+
+  if (options?.realtime === false) {
+    return () => {
+      disposed = true;
+      if (refetchTimer) clearTimeout(refetchTimer);
+    };
+  }
+
+  const channel = tableChannel(table);
+  channel.on('postgres_changes', { event: '*', schema: 'public', table }, async (payload) => {
+    const realtimePayload = payload as { new?: { id?: string }; old?: { id?: string } };
+    const changedRow = (realtimePayload.new || realtimePayload.old) as ({ id?: string; data?: Record<string, any> } | undefined);
+    if (!changedRow?.id) {
+      scheduleRefetch();
+      return;
+    }
+
+    if (isDocRef) {
+      if (!realtimePayload.new?.id) {
+        currentDocument = makeSnap(table, changedRow.id, null);
+      } else {
+        currentDocument = makeSnap(table, changedRow.id, changedRow.data || null);
+      }
+      if (!disposed && currentDocument) onSuccess(currentDocument);
+      return;
+    }
+
+    const q = (target as any).__kind === 'query'
+      ? (target as QueryShape)
+      : query(target as CollectionReference);
+    const eventType = (payload as { eventType?: string }).eventType;
+    currentRows = currentRows.filter((row) => row.id !== changedRow.id);
+    if (eventType !== 'DELETE' && changedRow.data && realtimeRowMatches(changedRow, q)) {
+      currentRows.push({ id: changedRow.id, data: { ...changedRow.data, id: changedRow.id } });
+    }
+
+    const orderedRows = sortRealtimeRows(currentRows, q);
+    const visibleRows = q.limitN === null ? orderedRows : orderedRows.slice(0, q.limitN);
+    if (!disposed) onSuccess(makeQuerySnap(table, visibleRows));
+  });
+  channel.subscribe();
 
   return () => {
     disposed = true;
     if (refetchTimer) clearTimeout(refetchTimer);
     try {
       supabase.removeChannel(channel);
+      activeRealtimeChannels.delete(channel.topic.replace('realtime:', ''));
+      console.info(`[Realtime] canal fechado (total: ${activeRealtimeChannels.size})`);
     } catch {
       /* noop */
     }

@@ -77,7 +77,8 @@ export const setorService = {
    */
   subscribeSetores(
     onUpdate: (setores: UnidadeOrganizacional[], todasUOs: UnidadeOrganizacional[]) => void,
-    onError?: (err: any) => void
+    onError?: (err: any) => void,
+    realtime = false
   ): Unsubscribe {
     let unsubscribe: Unsubscribe = () => {};
 
@@ -124,7 +125,8 @@ export const setorService = {
           );
           const setores = todas.filter((u) => u.tipo === 'SETOR');
           onUpdate(setores, todas);
-        }
+        },
+        { realtime }
       );
     } catch (err) {
       console.warn('Fallback offline para setores:', err);

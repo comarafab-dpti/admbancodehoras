@@ -1,6 +1,9 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { PaystubRecord, PaystubRubrica, Employee, Branch } from '../types';
 import { maskCPF, cleanCPF, isValidCPF } from './lgpdUtils';
+import { normalizeMatricula, formatMatriculaVisual } from './matriculaUtils';
+
+export { normalizeMatricula, formatMatriculaVisual } from './matriculaUtils';
 
 // Configure worker safely for browser environments (Vite)
 if (typeof window !== 'undefined') {
@@ -15,24 +18,6 @@ if (typeof window !== 'undefined') {
 /**
  * Normaliza matrícula removendo zeros à esquerda e espaços (ex: "013974" -> "13974")
  */
-export function normalizeMatricula(mat: string | undefined | null): string {
-  if (!mat) return '';
-  const clean = mat.toString().trim().toUpperCase().replace(/^0+/, '');
-  return clean || '0';
-}
-
-/**
- * Formata matrícula visualmente com 6 dígitos se for número puro (ex: "13974" -> "013974")
- */
-export function formatMatriculaVisual(mat: string | undefined | null): string {
-  if (!mat) return '';
-  const clean = normalizeMatricula(mat);
-  if (/^\d+$/.test(clean) && clean.length < 6) {
-    return clean.padStart(6, '0');
-  }
-  return clean;
-}
-
 export interface ParsePaystubResult {
   paystubs: PaystubRecord[];
   totalPages: number;

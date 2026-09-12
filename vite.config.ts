@@ -75,6 +75,16 @@ export default defineConfig(() => {
           index: path.resolve(__dirname, 'index.html'),
           admin: path.resolve(__dirname, 'admin.html'),
         },
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('pdfjs-dist')) return 'pdf';
+            if (id.includes('papaparse')) return 'csv';
+            if (id.includes('@supabase')) return 'supabase';
+            if (id.includes('react') || id.includes('scheduler')) return 'vendor';
+            return undefined;
+          },
+        },
       },
     },
   };

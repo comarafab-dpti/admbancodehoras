@@ -304,7 +304,8 @@ export const canteiroService = {
    */
   subscribeCanteiros(
     onSuccess: (sites: ConstructionSite[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    realtime = true
   ): Unsubscribe {
     try {
       return onSnapshot(
@@ -374,7 +375,8 @@ export const canteiroService = {
           logDbError(error, OperationType.LIST, CANTEIROS_COLLECTION);
           if (onError) onError(error);
           onSuccess(normalizePersistedSites([]));
-        }
+        },
+        { realtime }
       );
     } catch (err: any) {
       logDbError(err, OperationType.LIST, CANTEIROS_COLLECTION);

@@ -3,9 +3,9 @@ import { Employee, TimeRecord, DashboardFilter, Attachment, AdminRole, Construct
 import { 
   formatHoursDecimal, 
   formatHoursToDays, 
-  getEmployeeTotalBalance, 
   generateMonthlySummaries 
 } from '@/src/shared/utils/calculations';
+import { calcularSaldosConsolidados, chaveMatricula } from '@/src/shared/utils/saldo';
 import { exportTimeRecordsToLookerCSV, exportFilteredBalancesCSV, triggerFileDownload } from '@/src/shared/utils/csvHandler';
 import { DashboardCalendarView } from './DashboardCalendarView';
 import { CollaboratorBalancesPrintModal } from './CollaboratorBalancesPrintModal';
@@ -197,6 +197,25 @@ export const LookerDashboard: React.FC<LookerDashboardProps> = ({
     });
   }, [records, filters.dataInicio, filters.dataFim]);
 
+  const balancesByMatricula = useMemo(
+    () => calcularSaldosConsolidados(employees, dateFilteredRecords),
+    [employees, dateFilteredRecords],
+  );
+
+  const getBalance = (matricula: string) => balancesByMatricula.get(chaveMatricula(matricula));
+  const emptyBalance = {
+    saldoTotalHoras: 0,
+    saldoTotalDias: 0,
+    saldoInicial: 0,
+    totalCreditos: 0,
+    totalDebitos: 0,
+    totalAtestados: 0,
+    totalFaltas: 0,
+    totalHorasDescontoFolha: 0,
+    totalHorasExtras50: 0,
+    totalHorasExtras100: 0,
+  };
+
   // Colaboradores filtrados com balanço consolidado no período
   const filteredEmployeesWithBalance = useMemo(() => {
     return employees
@@ -216,7 +235,8 @@ export const LookerDashboard: React.FC<LookerDashboardProps> = ({
       })
       .map(emp => {
         // Recalcula o saldo consolidado no período selecionado
-        const bal = getEmployeeTotalBalance(emp.matricula, employees, dateFilteredRecords);
+        const bal = getBalance(emp.matricula);
+        if (!bal) return { ...emp, ...emptyBalance, statusBancoCalc: 'ZERADO' as const };
         const { status: _bancoStatus, ...balRest } = bal;
         return {
           ...emp,
@@ -305,8 +325,8 @@ export const LookerDashboard: React.FC<LookerDashboardProps> = ({
 
       // Filtro de Status do Banco
       if (filters.statusBanco !== 'TODOS') {
-        const bal = getEmployeeTotalBalance(r.matricula, employees, dateFilteredRecords);
-        const empSaldo = bal.saldoTotalHoras;
+        const bal = getBalance(r.matricula);
+        const empSaldo = bal?.saldoTotalHoras || 0;
         if (filters.statusBanco === 'CREDOR' && !(empSaldo > 0.05)) return false;
         if (filters.statusBanco === 'DEVEDOR' && !(empSaldo < -0.05)) return false;
         if (filters.statusBanco === 'ZERADO' && !(Math.abs(empSaldo) <= 0.05)) return false;
@@ -380,7 +400,8 @@ export const LookerDashboard: React.FC<LookerDashboardProps> = ({
     let colaboradoresDevedores = 0;
 
     employees.forEach(emp => {
-      const bal = getEmployeeTotalBalance(emp.matricula, employees, dateFilteredRecords);
+      const bal = getBalance(emp.matricula);
+      if (!bal) return;
       saldoGeralHoras += bal.saldoTotalHoras;
       totalAtestados += bal.totalAtestados;
       totalFaltas += bal.totalFaltas;
@@ -419,7 +440,8 @@ export const LookerDashboard: React.FC<LookerDashboardProps> = ({
         map[s] = { sede: s, saldoHoras: 0, colaboradores: 0, atestados: 0, faltas: 0 };
       }
       map[s].colaboradores++;
-      const bal = getEmployeeTotalBalance(emp.matricula, employees, dateFilteredRecords);
+      const bal = getBalance(emp.matricula);
+      if (!bal) return;
       map[s].saldoHoras += bal.saldoTotalHoras;
       map[s].atestados += bal.totalAtestados;
       map[s].faltas += bal.totalFaltas;

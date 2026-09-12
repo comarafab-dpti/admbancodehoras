@@ -1,34 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Employee, TimeRecord, Attachment, AdminUser, AdminRole, AuthSession, InsalubrityRecord, SystemConfig, GrauInsalubridade, ConstructionSite, PaystubRecord, DispensaSptfRecord } from './shared/types';
 import { storageService } from './shared/services/storageService';
 import { dbService, BatchProgressInfo } from './shared/services/dbService';
 import { seedService } from './shared/services/seedService';
-import { auth, onAuthStateChanged, getRedirectResult, firebaseSignOut, FirebaseUser, isPermissionError, isQuotaError, testConnection } from './shared/services/db';
+import { auth, onAuthStateChanged, getRedirectResult, firebaseSignOut, FirebaseUser, isPermissionError, isQuotaError, testConnection, getActiveRealtimeChannelCount } from './shared/services/db';
 import { authService, getAuthErrorMessage } from './shared/services/authService';
 
 import { Navbar, ActiveTab, UserMode } from './admin/Navbar';
-import { LookerDashboard } from './admin/LookerDashboard';
-import { EmployeeManagement } from './admin/EmployeeManagement';
-import { EmployeeStatement } from './admin/EmployeeStatement';
-import { AdminPermissionsManagement } from './admin/AdminPermissionsManagement';
-import { SettingsPage } from './admin/SettingsPage';
-import { BackupRestorePanel } from './admin/BackupRestorePanel';
-import { GoogleArchitectureSpec } from './admin/GoogleArchitectureSpec';
-import { AdminLockScreen } from './admin/AdminLockScreen';
 import { AdminLoginModal } from './admin/AdminLoginModal';
-import { DailyEntryModal } from './admin/DailyEntryModal';
-import { QuickBatchEntryModal } from './admin/QuickBatchEntryModal';
-import { SptfDispensaModal } from './admin/SptfDispensaModal';
-import { SiteSupervisorMobileView } from './admin/SiteSupervisorMobileView';
-import { CertificatePreviewModal } from './admin/CertificatePreviewModal';
-import { ImportTimeRecordsModal } from './admin/ImportTimeRecordsModal';
-import { InsalubrityManagement } from './admin/InsalubrityManagement';
-import { CanteirosManagement } from './admin/CanteirosManagement';
-import { ExecutiveReportsView } from './admin/ExecutiveReportsView';
-import { ContrachequesManagement } from './admin/ContrachequesManagement';
-import { DispensasFaltasManagement } from './admin/DispensasFaltasManagement';
-import { AuditTrailView } from './admin/AuditTrailView';
-import { ComaraLogoModal } from './admin/ComaraLogoModal';
 import { DatabaseSafetyActionModal, SafetyActionType } from './admin/DatabaseSafetyActionModal';
 import { SessionTimeoutModal } from './shared/components/SessionTimeoutModal';
 import { OfflineIndicator } from './shared/components/OfflineIndicator';
@@ -37,7 +16,6 @@ import { ProtectedRoute } from './admin/ProtectedRoute';
 import { rbacService } from './shared/services/rbacService';
 import { registrarLogAuditoria } from './shared/services/auditService';
 import { competenciaService, CompetenciaControle } from './shared/services/competenciaService';
-import { CompetenciaManagementModal } from './admin/CompetenciaManagementModal';
 import {
   getCompetenciaAnterior,
   normalizarCanteiroId,
@@ -46,6 +24,29 @@ import {
 import { useInactivityTimeout } from './shared/hooks/useInactivityTimeout';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 import { CheckCircle2, AlertCircle, Cloud, RefreshCw, X, Database, ShieldAlert, BookOpen, ArrowLeft, LogOut, Lock } from 'lucide-react';
+
+const LookerDashboard = lazy(() => import('./admin/LookerDashboard').then((module) => ({ default: module.LookerDashboard })));
+const EmployeeManagement = lazy(() => import('./admin/EmployeeManagement').then((module) => ({ default: module.EmployeeManagement })));
+const EmployeeStatement = lazy(() => import('./admin/EmployeeStatement').then((module) => ({ default: module.EmployeeStatement })));
+const AdminPermissionsManagement = lazy(() => import('./admin/AdminPermissionsManagement').then((module) => ({ default: module.AdminPermissionsManagement })));
+const SettingsPage = lazy(() => import('./admin/SettingsPage').then((module) => ({ default: module.SettingsPage })));
+const BackupRestorePanel = lazy(() => import('./admin/BackupRestorePanel').then((module) => ({ default: module.BackupRestorePanel })));
+const GoogleArchitectureSpec = lazy(() => import('./admin/GoogleArchitectureSpec').then((module) => ({ default: module.GoogleArchitectureSpec })));
+const AdminLockScreen = lazy(() => import('./admin/AdminLockScreen').then((module) => ({ default: module.AdminLockScreen })));
+const DailyEntryModal = lazy(() => import('./admin/DailyEntryModal').then((module) => ({ default: module.DailyEntryModal })));
+const QuickBatchEntryModal = lazy(() => import('./admin/QuickBatchEntryModal').then((module) => ({ default: module.QuickBatchEntryModal })));
+const SptfDispensaModal = lazy(() => import('./admin/SptfDispensaModal').then((module) => ({ default: module.SptfDispensaModal })));
+const SiteSupervisorMobileView = lazy(() => import('./admin/SiteSupervisorMobileView').then((module) => ({ default: module.SiteSupervisorMobileView })));
+const CertificatePreviewModal = lazy(() => import('./admin/CertificatePreviewModal').then((module) => ({ default: module.CertificatePreviewModal })));
+const ImportTimeRecordsModal = lazy(() => import('./admin/ImportTimeRecordsModal').then((module) => ({ default: module.ImportTimeRecordsModal })));
+const InsalubrityManagement = lazy(() => import('./admin/InsalubrityManagement').then((module) => ({ default: module.InsalubrityManagement })));
+const CanteirosManagement = lazy(() => import('./admin/CanteirosManagement').then((module) => ({ default: module.CanteirosManagement })));
+const ExecutiveReportsView = lazy(() => import('./admin/ExecutiveReportsView').then((module) => ({ default: module.ExecutiveReportsView })));
+const ContrachequesManagement = lazy(() => import('./admin/ContrachequesManagement').then((module) => ({ default: module.ContrachequesManagement })));
+const DispensasFaltasManagement = lazy(() => import('./admin/DispensasFaltasManagement').then((module) => ({ default: module.DispensasFaltasManagement })));
+const AuditTrailView = lazy(() => import('./admin/AuditTrailView').then((module) => ({ default: module.AuditTrailView })));
+const ComaraLogoModal = lazy(() => import('./admin/ComaraLogoModal').then((module) => ({ default: module.ComaraLogoModal })));
+const CompetenciaManagementModal = lazy(() => import('./admin/CompetenciaManagementModal').then((module) => ({ default: module.CompetenciaManagementModal })));
 
 export interface AppUser {
   uid?: string;
@@ -68,10 +69,13 @@ export interface AppUser {
   uoGestao?: string;
 }
 
-export default function App() {
+function AppContent() {
   // Auth State - Inicializado como nulo para impedir qualquer auto-login indevido ao reabrir o navegador
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
+  const authProcessingKeyRef = useRef<string | null>(null);
+  const authResolvedKeyRef = useRef<string | null>(null);
   const [userRole, setUserRole] = useState<AdminRole | null>(null);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [isVerifyingPermissions, setIsVerifyingPermissions] = useState(false);
@@ -191,6 +195,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!authReady || !currentUser) return;
+
     const unsubscribeAtual = competenciaService.subscribeControleCompetencia(
       currentCompetencia,
       (controle) => {
@@ -207,16 +213,20 @@ export default function App() {
       setCompetenciaAnteriorControle,
       (error) => console.warn('Erro no listener da competência anterior:', error),
     );
-    const unsubscribeTodas = competenciaService.subscribeTodasCompetenciasControle(
-      setTodasCompetenciasControle,
-      (error) => console.warn('Erro no listener de todas as competências:', error),
-    );
+
+    let cancelled = false;
+    competenciaService.listarCompetenciasControle()
+      .then((controles) => {
+        if (!cancelled) setTodasCompetenciasControle(controles);
+      })
+      .catch((error) => console.warn('Erro ao carregar histórico de competências:', error));
+
     return () => {
+      cancelled = true;
       unsubscribeAtual();
       unsubscribeAnterior();
-      unsubscribeTodas();
     };
-  }, [currentCompetencia, markCollectionLoaded]);
+  }, [authReady, currentUser, currentCompetencia, markCollectionLoaded]);
 
   // Debounce de 250ms na navegação de competência (Requisito 6C da especificação):
   // cliques acelerados em avançar/voltar executam apenas a leitura da competência final.
@@ -323,7 +333,7 @@ export default function App() {
   //    reabrir — nunca existem duas subscriptions competindo entre si.
   // -------------------------------------------------------------
   const initFirestoreSubscriptions = useCallback((hasSession: boolean) => {
-    if (!hasSession) {
+    if (!authReady || !hasSession) {
       setIsSyncing(false);
       return () => {};
     }
@@ -370,7 +380,8 @@ export default function App() {
         markCollectionLoaded('colaboradores');
         setIsSyncing(false);
       },
-      activeCanteiro
+      activeCanteiro,
+      false
     ));
 
     // Subscribe to Time Records in Firestore (sempre ativo: gestão)
@@ -394,7 +405,9 @@ export default function App() {
         }
         markCollectionLoaded('lancamentos');
       },
-      activeCanteiro
+      activeCanteiro,
+      undefined,
+      true
     ));
 
     // Subscribe to Insalubrity Records in Firestore (sempre ativo: gestão)
@@ -413,7 +426,8 @@ export default function App() {
         }
         markCollectionLoaded('insalubridade');
       },
-      activeCanteiro
+      activeCanteiro,
+      false
     ));
 
     // Subscribe to Paystubs (Contracheques Digitais) in Firestore (sempre ativo: gestão)
@@ -432,7 +446,9 @@ export default function App() {
         }
         markCollectionLoaded('contracheques');
       },
-      activeCanteiro
+      activeCanteiro,
+      undefined,
+      false
     ));
 
     // -------------------------------------------------------------
@@ -454,7 +470,8 @@ export default function App() {
           (err) => {
             console.warn('Sincronização de administradores indisponível para este perfil:', err);
             markCollectionLoaded('admins');
-          }
+          },
+          false
         ));
       }
 
@@ -474,7 +491,8 @@ export default function App() {
           }
           markCollectionLoaded('dispensas');
         },
-        activeCanteiro
+          activeCanteiro,
+          false
       ));
 
       // Canteiros de obras em tempo real (onSnapshot — sem cache com TTL)
@@ -486,7 +504,8 @@ export default function App() {
         (err) => {
           console.warn('Erro na sincronização de canteiros:', err);
           markCollectionLoaded('canteiros');
-        }
+          },
+          false
       ));
 
       // Configuração do sistema em tempo real (onSnapshot — sem cache com TTL)
@@ -503,6 +522,8 @@ export default function App() {
       ));
     }
 
+    console.info(`[Boot 6] subscriptions: ${getActiveRealtimeChannelCount()} canais Realtime ativos`);
+
     return () => {
       unsubs.forEach((u) => {
         try {
@@ -512,18 +533,18 @@ export default function App() {
         }
       });
     };
-  }, [userRole, activeCanteiro, isGlobalUser, markCollectionLoaded]);
+  }, [authReady, userRole, activeCanteiro, isGlobalUser, markCollectionLoaded]);
 
   // Um único efeito gerencia o ciclo de vida das subscriptions.
   // O cleanup do efeito cancela o conjunto anterior antes de reabrir,
   // eliminando qualquer competição entre listeners no login/logout.
   useEffect(() => {
-    if (isAuthLoading) return;
+    if (isAuthLoading || !authReady || !currentUser) return;
     const cleanup = initFirestoreSubscriptions(!!currentUser);
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, [initFirestoreSubscriptions, currentUser?.email, isAuthLoading]);
+  }, [initFirestoreSubscriptions, currentUser?.email, isAuthLoading, authReady]);
 
   // -------------------------------------------------------------
   // Rotas simplificadas: /admin (gestão administrativa)
@@ -550,18 +571,37 @@ export default function App() {
   // 2. Monitor and Enforce Strict RBAC on Authentication State
   // -------------------------------------------------------------
   useEffect(() => {
+    console.info('[Boot 1] getSession iniciado');
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setIsAuthLoading(false);
+      const email = user?.email?.toLowerCase().trim() || null;
+      const authKey = user?.uid || email || 'anonymous';
+      if (authProcessingKeyRef.current === authKey || authResolvedKeyRef.current === authKey) {
+        return;
+      }
+
+      authProcessingKeyRef.current = authKey;
+      authResolvedKeyRef.current = null;
+      setAuthReady(false);
+      setIsAuthLoading(true);
+      console.info(`[Boot 2] getSession retornou: ${email || 'null'}`);
 
       if (user) {
-        const email = user.email?.toLowerCase().trim() || '';
         if (!email) {
           setIsVerifyingPermissions(false);
+          authResolvedKeyRef.current = authKey;
+          authProcessingKeyRef.current = null;
+          setAuthReady(true);
+          setIsAuthLoading(false);
+          console.info('[Boot 5] authReady = true');
           return;
         }
 
+        console.info('[Boot 3] processAuthenticatedUser iniciado');
+        let resolvedProfile = 'desconhecido';
         try {
           const processed = await authService.processAuthenticatedUser(user);
+          resolvedProfile = processed.isSuperAdmin ? 'SUPER_ADMIN' : (processed.admin.nivelAcesso || processed.admin.role || processed.status);
+          console.info(`[Boot 4] processAuthenticatedUser terminou: ${resolvedProfile}`);
 
           if (processed.status === 'pendente') {
             setPendingAccessUser({
@@ -626,12 +666,22 @@ export default function App() {
           console.warn('[onAuthStateChanged] Erro ao processar perfil do usuário:', err);
         } finally {
           setIsVerifyingPermissions(false);
+          authResolvedKeyRef.current = authKey;
+          authProcessingKeyRef.current = null;
+          setAuthReady(true);
+          setIsAuthLoading(false);
+          console.info('[Boot 5] authReady = true');
         }
       } else {
         setIsVerifyingPermissions(false);
         authService.clearSession();
         setCurrentUser(null);
         setUserRole(null);
+        authResolvedKeyRef.current = authKey;
+        authProcessingKeyRef.current = null;
+        setAuthReady(true);
+        setIsAuthLoading(false);
+        console.info('[Boot 5] authReady = true');
       }
     });
 
@@ -2452,3 +2502,22 @@ export default function App() {
     </div>
   );
 }
+
+function App() {
+  return (
+    <Suspense
+      fallback={(
+        <div className="min-h-screen flex items-center justify-center bg-[#0B1426] text-slate-300">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+            Carregando módulo...
+          </div>
+        </div>
+      )}
+    >
+      <AppContent />
+    </Suspense>
+  );
+}
+
+export default App;

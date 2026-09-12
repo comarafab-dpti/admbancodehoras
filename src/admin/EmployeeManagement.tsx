@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Employee, TimeRecord, Branch, EmployeeStatus, ConstructionSite } from '@/src/shared/types';
 import { generateEmployeesTemplateCSV, triggerFileDownload } from '@/src/shared/utils/csvHandler';
-import { getEmployeeTotalBalance, formatHoursDecimal, formatHoursToDays } from '@/src/shared/utils/calculations';
+import { formatHoursDecimal, formatHoursToDays } from '@/src/shared/utils/calculations';
+import { calcularSaldosConsolidados, chaveMatricula } from '@/src/shared/utils/saldo';
 import { dbService } from '@/src/shared/services/dbService';
 import { authService } from '@/src/shared/services/authService';
 import { 
@@ -154,6 +155,11 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   // -------------------------------------------------------------
   // CONTAGENS DE SALDO (PILLS KPI COUNTER)
   // -------------------------------------------------------------
+  const balancesByMatricula = useMemo(
+    () => calcularSaldosConsolidados(employees, records),
+    [employees, records],
+  );
+
   const balanceCounts = useMemo(() => {
     let todos = 0;
     let credor = 0;
@@ -161,7 +167,8 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
     let zerado = 0;
 
     employees.forEach(emp => {
-      const bal = getEmployeeTotalBalance(emp.matricula, employees, records);
+      const bal = balancesByMatricula.get(chaveMatricula(emp.matricula));
+      if (!bal) return;
       todos++;
       if (bal.saldoTotalHoras > 0.05) credor++;
       else if (bal.saldoTotalHoras < -0.05) devedor++;
@@ -169,7 +176,7 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
     });
 
     return { todos, credor, devedor, zerado };
-  }, [employees, records]);
+  }, [employees, balancesByMatricula]);
 
   // -------------------------------------------------------------
   // COMBINAÇÃO DE BUSCA, FILTROS E ORDENAÇÃO VIA useMemo
@@ -177,10 +184,12 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   const filteredAndSortedEmployees = useMemo(() => {
     return employees
       .map((emp) => {
-        const bal = getEmployeeTotalBalance(emp.matricula, employees, records);
+        const bal = balancesByMatricula.get(chaveMatricula(emp.matricula));
+        if (!bal) return null;
         const org = resolveEmployeeOrgInfo(emp, constructionSites);
         return { emp, bal, org };
       })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
       .filter(({ emp, bal, org }) => {
         // 1. Filtro de Sede
         if (filterSede !== 'TODAS' && org.sedeCodigo !== filterSede && emp.sedeCodigo !== filterSede) {
@@ -273,7 +282,7 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
         }
         return sortConfig.direction === 'asc' ? comparison : -comparison;
       });
-  }, [employees, records, constructionSites, filterSede, filterSetor, filterStatus, balanceFilter, searchTerm, sortConfig]);
+  }, [employees, balancesByMatricula, constructionSites, filterSede, filterSetor, filterStatus, balanceFilter, searchTerm, sortConfig]);
 
   // -------------------------------------------------------------
   // HANDLERS DE ORDENAÇÃO (MOBILE & DESKTOP)
