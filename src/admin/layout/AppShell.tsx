@@ -7,8 +7,6 @@ import { SettingsMenu } from '../SettingsMenu';
 import { ActiveTab, UserMode } from '../Navbar';
 import {
   Menu,
-  Sun,
-  Moon,
   Settings,
   LogOut,
   BarChart3,
@@ -20,7 +18,6 @@ import {
   BookOpen,
   Clock,
   CalendarCheck2,
-  LayoutPanelTop,
   Building2
 } from 'lucide-react';
 
@@ -402,33 +399,7 @@ export const AppShellHeader: React.FC<AppShellHeaderProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <PWAInstallButton variant="navbar" theme={theme} />
 
-          <button
-            onClick={onToggleTheme}
-            className={`p-2 rounded-xl transition-colors active:scale-[0.98] border cursor-pointer ${
-              isDark
-                ? 'bg-[#16243D] hover:bg-[#243756] text-amber-400 hover:text-amber-300 border-[#243756]'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-200'
-            }`}
-            title={isDark ? 'Alternar para Tema Claro' : 'Alternar para Tema Escuro'}
-            aria-label="Alternar tema"
-          >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-
-          <button
-            onClick={onToggleLayout}
-            className={`p-2 rounded-xl transition-colors active:scale-[0.98] border cursor-pointer ${
-              isDark
-                ? 'bg-[#16243D] hover:bg-[#243756] text-blue-400 border-[#243756]'
-                : 'bg-slate-100 hover:bg-slate-200 text-blue-600 border-slate-200'
-            }`}
-            title="Voltar para o layout clássico"
-            aria-label="Alternar layout"
-          >
-            <LayoutPanelTop className="w-4 h-4" />
-          </button>
-
-          {/* Engrenagem: configurações, lançamentos e seletor de perfil RBAC */}
+          {/* Engrenagem: configurações, lançamentos, tema, layout e seletor de perfil RBAC */}
           <div className="relative" ref={settingsRef}>
             <button
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
@@ -450,6 +421,8 @@ export const AppShellHeader: React.FC<AppShellHeaderProps> = ({
             {isSettingsOpen && (
               <SettingsMenu
                 theme={theme}
+                onToggleTheme={onToggleTheme}
+                onToggleLayout={onToggleLayout}
                 activeTab={activeTab}
                 onSelectTab={onSelectTab}
                 onOpenQuickBatchModal={onOpenQuickBatchModal}

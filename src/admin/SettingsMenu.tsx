@@ -20,7 +20,10 @@ import {
   RotateCcw,
   FileSpreadsheet,
   FileCheck,
-  DatabaseBackup
+  DatabaseBackup,
+  Sun,
+  Moon,
+  LayoutPanelTop
 } from 'lucide-react';
 
 /**
@@ -30,6 +33,8 @@ import {
  */
 interface SettingsMenuProps {
   theme: 'dark' | 'light';
+  onToggleTheme: () => void;
+  onToggleLayout?: () => void;
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   onOpenQuickBatchModal: () => void;
@@ -49,6 +54,8 @@ interface SettingsMenuProps {
 
 export const SettingsMenu: React.FC<SettingsMenuProps> = ({
   theme,
+  onToggleTheme,
+  onToggleLayout,
   activeTab,
   onSelectTab,
   onOpenQuickBatchModal,
@@ -116,6 +123,41 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
                           {currentUserEmail}
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* SEÇÃO 0.1: APARÊNCIA — TEMA (CLARO/ESCURO) & LAYOUT (CLÁSSICO/SIDEBAR) */}
+                  <div className={`p-2.5 border-b ${isDark ? 'border-[#243756]' : 'border-slate-100'}`}>
+                    <span className={`text-[10px] uppercase font-bold tracking-wider block mb-1.5 px-1 ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>
+                      Aparência
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={onToggleTheme}
+                        className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                          isDark
+                            ? 'bg-[#0F1B33] text-amber-300 hover:text-amber-200 border border-[#243756] hover:border-amber-500/40'
+                            : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                        }`}
+                        title={isDark ? 'Alternar para Tema Claro' : 'Alternar para Tema Escuro'}
+                      >
+                        {isDark ? <Sun className="w-3.5 h-3.5 shrink-0" /> : <Moon className="w-3.5 h-3.5 shrink-0" />}
+                        <span className="truncate">Tema {isDark ? 'Escuro' : 'Claro'}</span>
+                      </button>
+                      {onToggleLayout && (
+                        <button
+                          onClick={onToggleLayout}
+                          className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                            isDark
+                              ? 'bg-[#0F1B33] text-blue-300 hover:text-blue-200 border border-[#243756] hover:border-blue-500/40'
+                              : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                          }`}
+                          title="Alternar entre a Navbar clássica e o layout com Sidebar (Clean)"
+                        >
+                          <LayoutPanelTop className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">Layout Sidebar</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 

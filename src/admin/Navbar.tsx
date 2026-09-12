@@ -3,7 +3,6 @@ import { SystemConfig, AdminRole } from '@/src/shared/types';
 import { ComaraLogo } from '@/src/shared/components/ComaraLogo';
 import { SettingsMenu } from './SettingsMenu';
 import { PWAInstallButton } from '@/src/shared/components/PWAInstallButton';
-import { ModuleBadge } from '@/src/shared/components/ModuleBadge';
 import { rbacService, ROLE_INFO } from '@/src/shared/services/rbacService';
 import { 
   BarChart3, 
@@ -14,9 +13,6 @@ import {
   Zap, 
   ShieldCheck, 
   UserCheck, 
-  Sun, 
-  Moon, 
-  LayoutPanelTop, 
   Lock, 
   ChevronDown, 
   Settings, 
@@ -129,7 +125,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* 0. TOPO INSTITUCIONAL: BARRA DO MÓDULO ADMINISTRATIVO */}
       <div className="bg-[#070D19] border-b border-[#1A263D] px-2 sm:px-4 lg:px-6 xl:px-8 py-1 text-[11px] flex items-center justify-between select-none">
         <div className="flex items-center gap-2">
-          <ModuleBadge tipo="admin" size="sm" />
           <span className="text-[10px] sm:text-[11px] font-bold text-amber-400 tracking-wider uppercase hidden xs:inline">
             Gestão & Administração SPTF
           </span>
@@ -161,7 +156,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1 sm:px-1.5 py-0.2 rounded border bg-[#243756] text-blue-400 border-[#335075]">
                   RH Cloud
                 </span>
-                <ModuleBadge tipo="admin" size="sm" className="hidden xl:inline-flex" />
               </div>
               <p className="text-[10px] sm:text-[11px] font-mono font-medium hidden sm:block text-[#94A3B8]">
                 Sedes: <span className="text-[#3B82F6] font-bold">KO</span> • BE • MN
@@ -321,36 +315,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* BOTÃO INSTALAR APLICATIVO (PWA) */}
             <PWAInstallButton variant="navbar" theme={theme} />
 
-            {/* ALTERNADOR DE TEMA (SOL / LUA) */}
-            <button
-              onClick={onToggleTheme}
-              className={`p-2 rounded-xl transition-colors active:scale-[0.98] border cursor-pointer ${
-                isDark 
-                  ? 'bg-[#16243D] hover:bg-[#243756] text-amber-400 hover:text-amber-300 border-[#243756]' 
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-200'
-              }`}
-              title={isDark ? 'Alternar para Tema Claro' : 'Alternar para Tema Escuro'}
-              aria-label="Alternar tema"
-            >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-
-            {/* ALTERNADOR DE LAYOUT (SIDEBAR "CLEAN" VS CLÁSSICA) */}
-            {onToggleLayout && (
-              <button
-                onClick={onToggleLayout}
-                className={`p-2 rounded-xl transition-colors active:scale-[0.98] border cursor-pointer ${
-                  isDark 
-                    ? 'bg-[#16243D] hover:bg-[#243756] text-blue-400 hover:text-blue-300 border-[#243756]' 
-                    : 'bg-slate-100 hover:bg-slate-200 text-blue-600 hover:text-blue-700 border-slate-200'
-                }`}
-                title="Alternar para o layout com Sidebar (Clean)"
-                aria-label="Alternar layout"
-              >
-                <LayoutPanelTop className="w-4 h-4" />
-              </button>
-            )}
-
             {/* DROPDOWN DE CONFIGURAÇÕES & LANÇAMENTOS (ÍCONE DE ENGRENAGEM ⚙️) */}
             <div className="relative" ref={settingsRef}>
               <button
@@ -376,6 +340,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               {isSettingsOpen && (
                 <SettingsMenu
                   theme={theme}
+                  onToggleTheme={onToggleTheme}
+                  onToggleLayout={onToggleLayout}
                   activeTab={activeTab}
                   onSelectTab={onSelectTab}
                   onOpenQuickBatchModal={onOpenQuickBatchModal}
