@@ -891,40 +891,71 @@ begin
 end $$;
 
 -- ============================================================================
--- PARTE 7: HARDENING DE SEGURANÇA (REVOGAÇÃO DE EXECUTE E SEARCH_PATH FIXO)
+-- PARTE 7: HARDENING DE SEGURANÇA (REVOGAÇÃO DE ANON E PERMISSÃO A AUTHENTICATED)
 -- ============================================================================
 
--- 1. Revogação de EXECUTE para anon e authenticated em funções internas de RLS
-revoke execute on function public.meu_email() from anon, authenticated;
-revoke execute on function public.admin_data() from anon, authenticated;
-revoke execute on function public.has_admin_doc() from anon, authenticated;
-revoke execute on function public.raw_role() from anon, authenticated;
-revoke execute on function public.admin_status() from anon, authenticated;
-revoke execute on function public.is_admin_active() from anon, authenticated;
-revoke execute on function public.is_master_email() from anon, authenticated;
-revoke execute on function public.normalize_role() from anon, authenticated;
-revoke execute on function public.is_super_admin() from anon, authenticated;
-revoke execute on function public.is_rh() from anon, authenticated;
-revoke execute on function public.is_global_admin() from anon, authenticated;
-revoke execute on function public.is_gerente_canteiro() from anon, authenticated;
-revoke execute on function public.is_chefe_canteiro() from anon, authenticated;
-revoke execute on function public.is_chefe_da() from anon, authenticated;
-revoke execute on function public.is_aux_da() from anon, authenticated;
-revoke execute on function public.is_da() from anon, authenticated;
-revoke execute on function public.pode_lancar() from anon, authenticated;
-revoke execute on function public.pode_gerenciar_competencia() from anon, authenticated;
-revoke execute on function public.meu_canteiro() from anon, authenticated;
-revoke execute on function public.documento_do_meu_canteiro(jsonb) from anon, authenticated;
-revoke execute on function public.canteiro_do_documento(jsonb) from anon, authenticated;
-revoke execute on function public.canteiro_permitido(text) from anon, authenticated;
-revoke execute on function public.contracheque_canteiro_permitido(jsonb) from anon, authenticated;
-revoke execute on function public.competencia_atual() from anon, authenticated;
-revoke execute on function public.competencia_anterior(text) from anon, authenticated;
-revoke execute on function public.status_competencia_canteiro(text, text) from anon, authenticated;
-revoke execute on function public.competencia_atual_aberta(text) from anon, authenticated;
-revoke execute on function public.competencia_anterior_fechada(text) from anon, authenticated;
-revoke execute on function public.lancamento_competencia_permitido(jsonb) from anon, authenticated;
+-- 1. Revogação de EXECUTE para anon em funções internas de RLS
+revoke execute on function public.meu_email() from anon;
+revoke execute on function public.admin_data() from anon;
+revoke execute on function public.has_admin_doc() from anon;
+revoke execute on function public.raw_role() from anon;
+revoke execute on function public.admin_status() from anon;
+revoke execute on function public.is_admin_active() from anon;
+revoke execute on function public.is_master_email() from anon;
+revoke execute on function public.normalize_role() from anon;
+revoke execute on function public.is_super_admin() from anon;
+revoke execute on function public.is_rh() from anon;
+revoke execute on function public.is_global_admin() from anon;
+revoke execute on function public.is_gerente_canteiro() from anon;
+revoke execute on function public.is_chefe_canteiro() from anon;
+revoke execute on function public.is_chefe_da() from anon;
+revoke execute on function public.is_aux_da() from anon;
+revoke execute on function public.is_da() from anon;
+revoke execute on function public.pode_lancar() from anon;
+revoke execute on function public.pode_gerenciar_competencia() from anon;
+revoke execute on function public.meu_canteiro() from anon;
+revoke execute on function public.documento_do_meu_canteiro(jsonb) from anon;
+revoke execute on function public.canteiro_do_documento(jsonb) from anon;
+revoke execute on function public.canteiro_permitido(text) from anon;
+revoke execute on function public.contracheque_canteiro_permitido(jsonb) from anon;
+revoke execute on function public.competencia_atual() from anon;
+revoke execute on function public.competencia_anterior(text) from anon;
+revoke execute on function public.status_competencia_canteiro(text, text) from anon;
+revoke execute on function public.competencia_atual_aberta(text) from anon;
+revoke execute on function public.competencia_anterior_fechada(text) from anon;
+revoke execute on function public.lancamento_competencia_permitido(jsonb) from anon;
 revoke execute on function public.competencias_controle_guard() from anon, authenticated;
+
+-- 2. Concessão de EXECUTE para authenticated (necessário para avaliação de RLS)
+grant execute on function public.meu_email() to authenticated;
+grant execute on function public.admin_data() to authenticated;
+grant execute on function public.has_admin_doc() to authenticated;
+grant execute on function public.raw_role() to authenticated;
+grant execute on function public.admin_status() to authenticated;
+grant execute on function public.is_admin_active() to authenticated;
+grant execute on function public.is_master_email() to authenticated;
+grant execute on function public.normalize_role() to authenticated;
+grant execute on function public.is_super_admin() to authenticated;
+grant execute on function public.is_rh() to authenticated;
+grant execute on function public.is_global_admin() to authenticated;
+grant execute on function public.is_gerente_canteiro() to authenticated;
+grant execute on function public.is_chefe_canteiro() to authenticated;
+grant execute on function public.is_chefe_da() to authenticated;
+grant execute on function public.is_aux_da() to authenticated;
+grant execute on function public.is_da() to authenticated;
+grant execute on function public.pode_lancar() to authenticated;
+grant execute on function public.pode_gerenciar_competencia() to authenticated;
+grant execute on function public.meu_canteiro() to authenticated;
+grant execute on function public.documento_do_meu_canteiro(jsonb) to authenticated;
+grant execute on function public.canteiro_do_documento(jsonb) to authenticated;
+grant execute on function public.canteiro_permitido(text) to authenticated;
+grant execute on function public.contracheque_canteiro_permitido(jsonb) to authenticated;
+grant execute on function public.competencia_atual() to authenticated;
+grant execute on function public.competencia_anterior(text) to authenticated;
+grant execute on function public.status_competencia_canteiro(text, text) to authenticated;
+grant execute on function public.competencia_atual_aberta(text) to authenticated;
+grant execute on function public.competencia_anterior_fechada(text) to authenticated;
+grant execute on function public.lancamento_competencia_permitido(jsonb) to authenticated;
 
 -- 2. Fixar search_path nas funções
 alter function public.meu_email() set search_path = public, pg_temp;

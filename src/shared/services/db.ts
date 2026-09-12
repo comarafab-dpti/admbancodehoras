@@ -654,7 +654,10 @@ function oauthRedirectTo(): string {
 export async function signInWithPopup(_auth: typeof auth, _provider?: typeof googleProvider): Promise<{ user: null }> {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: oauthRedirectTo() },
+    options: {
+      scopes: 'https://www.googleapis.com/auth/userinfo.email',
+      redirectTo: oauthRedirectTo(),
+    },
   });
   if (error) throw error;
   return { user: null };
@@ -663,7 +666,10 @@ export async function signInWithPopup(_auth: typeof auth, _provider?: typeof goo
 export async function signInWithRedirect(_auth: typeof auth, _provider?: typeof googleProvider): Promise<void> {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: oauthRedirectTo() },
+    options: {
+      scopes: 'https://www.googleapis.com/auth/userinfo.email',
+      redirectTo: oauthRedirectTo(),
+    },
   });
   if (error) throw error;
 }

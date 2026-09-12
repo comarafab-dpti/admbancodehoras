@@ -1,20 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Cliente Supabase (PostgreSQL) — nova camada de dados do sistema.
+ * Cliente Supabase (PostgreSQL) — camada de dados e autenticação oficial.
  *
- * As variáveis vêm do ambiente (VITE_*), definidas no painel de secrets.
- * Enquanto não configuradas, usa um placeholder para o app continuar
- * carregando (as requisições falham graciosamente até as chaves reais
- * serem fornecidas).
+ * As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são injetadas
+ * em tempo de build pelo Vite a partir do ambiente ou dos arquivos .env.
  */
-const metaEnv = (import.meta as any)?.env || {};
-const SUPABASE_URL = metaEnv.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const SUPABASE_ANON_KEY = metaEnv.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Log de diagnóstico no boot
+console.log('[Supabase] URL configurada:', SUPABASE_URL);
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    '[Supabase] Configuração ausente! As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY ' +
+    'devem ser obrigatoriamente configuradas no ambiente de build.'
+  );
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    // Sessão expira ao fechar o navegador (mesma semântica do legado browserSessionPersistence)
+    // Sessão persistente no navegador
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,

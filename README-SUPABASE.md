@@ -38,9 +38,9 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
    1. `supabase/migrations/001_schema.sql` (Estrutura de tabelas e índices)
    2. `supabase/migrations/002_rls.sql` (Políticas de segurança RLS)
    3. `supabase/migrations/004_auth_claims_trigger.sql` (Triggers de Custom Claims e RBAC)
-   4. `supabase/migrations/005_hardening_final.sql` (Hardening final contra todos os avisos do Linter)
+   4. `supabase/migrations/006_fix_permissions_and_invoker.sql` (Correção definitiva de permissões RLS e eliminação de avisos)
 
-   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql` e `005_hardening_final.sql`).*
+   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql` e `006_fix_permissions_and_invoker.sql`).*
 
    **Verificação de Saúde (Sanity Check):**
    Após executar as migrações, execute o script `scripts/check-supabase-setup.sql` no SQL Editor para confirmar que todas as tabelas, RLS, políticas de segurança, hardening contra avisos do Linter e triggers de Custom Claims estão ativos.
@@ -52,13 +52,17 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
      - O perfil RBAC (`nivelAcesso`, `role`, `canteiroSede`, `status`, `ativo`) é mantido na tabela `admin_users` e sincronizado automaticamente via triggers (`004_auth_claims_trigger.sql`) para o `raw_app_meta_data` do token JWT. As políticas RLS consom esses dados a custo zero (0ms) sem consultas adicionais ao banco.
    - **Google Workspace OAuth (Opcional/Alternativo)**:
      - Ative o provedor **Google** (Authentication > Providers > Google) se desejar permitir acesso com a conta Google corporativa.
-     - Em **Authentication > URL Configuration**, cadastre em *Site URL* e *Redirect URLs* a URL onde o sistema roda.
+     - O frontend solicita explicitamente o escopo `https://www.googleapis.com/auth/userinfo.email` para compatibilidade total com contas do Google Workspace.
+     - Em **Authentication > URL Configuration**, cadastre em *Site URL* e *Redirect URLs* a URL onde o sistema roda (ex.: `https://ais-dev-...run.app/admin`).
+     - **Atenção aos campos Client ID e Client Secret**: Ao copiar e colar do Google Cloud Console para o Supabase, certifique-se de que não haja espaços em branco invisíveis no início ou no fim dos valores, pois isso invalida a autenticação no Google OAuth.
    - Para o acesso mestre de contingência (`coari.comara@gmail.com` / `comarafab@gmail.com`), crie o usuário em **Authentication > Users** com uma senha forte.
 3. **Variáveis de ambiente** (Settings > API):
-   - `VITE_SUPABASE_URL` = Project URL
-   - `VITE_SUPABASE_ANON_KEY` = anon public key
+   - `VITE_SUPABASE_URL` = Project URL (ex: `https://tfglkitsxbhkrjykxfmp.supabase.co`)
+   - `VITE_SUPABASE_ANON_KEY` = anon public key (`eyJhbGciOi...`)
    - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` = apenas na máquina onde
      rodar o script de migração (nunca no frontend).
+   - ⚠️ **IMPORTANTE (Injeção em Tempo de Build)**:
+     Como o Vite substitui variáveis `import.meta.env.VITE_*` estaticamente durante o empacotamento (`npm run build`), `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` **devem estar obrigatoriamente configuradas no ambiente de build** da plataforma de hospedagem (AI Studio / Cloud Run / Base44 / Vercel), e não apenas em arquivos locais. Caso as variáveis não estejam presentes no momento do build, o bundle gerará erro explícito de inicialização em vez de falhas silenciosas. Após alterar essas variáveis em qualquer painel de CI/CD, force sempre um **novo build/deploy** da aplicação.
 4. **Migração dos dados** (Firestore → Supabase):
    - Exporte as coleções do Firebase Console (JSON) para
      `scripts/firestore-export/` — um arquivo por coleção
