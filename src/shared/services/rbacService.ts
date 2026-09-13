@@ -1,4 +1,4 @@
-import { AdminRole, Employee, TimeRecord, InsalubrityRecord, DispensaSptfRecord, Branch } from '../types';
+import { AdminRole, Employee, TimeRecord, InsalubrityRecord, DispensaSptfRecord, PaystubRecord, Branch } from '../types';
 
 export interface RBACUser {
   email: string;
@@ -498,6 +498,30 @@ export const rbacService = {
       if (this.getUserUo(user) && this.normalizeRole(user.role) === 'AUX_DA') return false;
       const secao = (d.secaoCanteiro || '').toUpperCase();
       return secao.includes(userCanteiro);
+    });
+  },
+
+  /**
+   * Filtro rigoroso de Contracheques por Tenancy (Canteiro Ativo)
+   */
+  filterPaystubsByTenancy(paystubs: PaystubRecord[], employees: Employee[], user: RBACUser | null): PaystubRecord[] {
+    if (!user) return [];
+    if (this.hasGlobalAccess(user.role)) return paystubs;
+
+    const userCanteiro = this.getUserCanteiroId(user);
+    const allowedMatriculas = new Set<string>();
+    employees.forEach((emp) => {
+      if (this.canAccessEmployeeInScope(user, emp)) {
+        allowedMatriculas.add(emp.matricula.trim().toUpperCase());
+      }
+    });
+
+    return paystubs.filter((p) => {
+      const mat = (p.matricula || '').trim().toUpperCase();
+      if (allowedMatriculas.has(mat)) return true;
+      if (this.getUserUo(user) && this.normalizeRole(user.role) === 'AUX_DA') return false;
+      const sede = (p.sede || '').toUpperCase();
+      return sede === userCanteiro || (userCanteiro === 'KO' && sede.startsWith('KO'));
     });
   },
 };
