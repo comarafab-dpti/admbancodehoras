@@ -1,7 +1,7 @@
 /**
  * Modal de Importação, Preview e Classificação Interativa de Colaboradores (Etapa 3b).
  * Responsável por upload CSV, preview segregado, conciliação interativa de UOs não reconhecidas
- * e persistência atômica no Firestore em lotes de até 400 documentos sem sobrecarga de leituras.
+ * e persistência atômica no banco de dados em lotes de até 400 documentos sem sobrecarga de leituras.
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
@@ -316,7 +316,7 @@ export const ImportarColaboradoresModal: React.FC<ImportarColaboradoresModalProp
     }
   };
 
-  // Executa a persistência atômica no Firestore em lotes de até 400 documentos
+  // Executa a persistência atômica no banco de dados em lotes de até 400 documentos
   const handleConfirmarImportacaoFirestore = async () => {
     if (colaboradoresValidos.length === 0) return;
 
@@ -911,7 +911,7 @@ export const ImportarColaboradoresModal: React.FC<ImportarColaboradoresModalProp
                       <div>
                         <p className="text-xs font-bold flex items-center gap-1.5">
                           <ShieldCheck className="w-4 h-4 text-blue-400" />
-                          Conciliação com Base do Firestore (Sem leituras extras)
+                          Conciliação com Base do banco de dados (Sem leituras extras)
                         </p>
                         <p className={`text-[11px] mt-0.5 ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>
                           {relatorioConflitos.totalNovos} novos registros • {relatorioConflitos.totalAtualizacoes} registros já existentes no sistema.

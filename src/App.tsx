@@ -85,7 +85,7 @@ function AppContent() {
   const [pendingAccessUser, setPendingAccessUser] = useState<{ email: string; nome: string; foto?: string | null; status?: 'pendente' | 'inativo' | 'bloqueado' } | null>(null);
   const [isViewingManualModal, setIsViewingManualModal] = useState(false);
 
-  // Firestore Data State
+  // Database Data State
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [records, setRecords] = useState<TimeRecord[]>([]);
   const [insalubrityRecords, setInsalubrityRecords] = useState<InsalubrityRecord[]>([]);
@@ -120,8 +120,8 @@ function AppContent() {
   const [isSafetyModalOpen, setIsSafetyModalOpen] = useState(false);
   const [safetyActionType, setSafetyActionType] = useState<SafetyActionType>('CLEAR_DATABASE');
 
-  // Firestore Status / Error Handling State
-  const [firestoreErrorNotice, setFirestoreErrorNotice] = useState<string | null>(null);
+  // Database Status / Error Handling State
+  const [dbErrorNotice, setDbErrorNotice] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [collectionLoading, setCollectionLoading] = useState({
     colaboradores: true,
@@ -199,6 +199,17 @@ function AppContent() {
     }
   }, []);
 
+  // Auto-dismiss database error banner após 10 segundos
+  useEffect(() => {
+    if (!dbErrorNotice) return;
+    
+    const timeoutId = setTimeout(() => {
+      setDbErrorNotice(null);
+    }, 10000); // 10 segundos
+    
+    return () => clearTimeout(timeoutId);
+  }, [dbErrorNotice]);
+
   useEffect(() => {
     if (!authReady || !currentUser) return;
 
@@ -253,7 +264,7 @@ function AppContent() {
   }, []);
 
   // -------------------------------------------------------------
-  // 1. Real-Time Cloud Firestore Sync com Fallback Robusto & Tenancy
+  // 1. Real-Time Database Sync com Fallback Robusto & Tenancy
   // -------------------------------------------------------------
   const currentUserCanteiro = currentUser ? rbacService.getUserCanteiroId(currentUser) : undefined;
   const isGlobalUser = rbacService.isGlobalRole(userRole);
@@ -337,7 +348,7 @@ function AppContent() {
   //    ativa. O efeito sempre cancela o conjunto anterior antes de
   //    reabrir — nunca existem duas subscriptions competindo entre si.
   // -------------------------------------------------------------
-  const initFirestoreSubscriptions = useCallback((hasSession: boolean) => {
+  const initDbSubscriptions = useCallback((hasSession: boolean) => {
     if (!authReady || !hasSession) {
       setIsSyncing(false);
       return () => {};
@@ -359,11 +370,11 @@ function AppContent() {
 
     const unsubs: Array<() => void> = [];
 
-    // Subscribe to Employees in Firestore (sempre ativo: gestão)
+    // Subscribe to Employees in Database (sempre ativo: gestão)
     unsubs.push(dbService.subscribeEmployees(
       (emps) => {
         setEmployees(emps);
-        setFirestoreErrorNotice(null);
+        setDbErrorNotice(null);
         if (emps.length > 0) {
           storageService.saveEmployees(emps);
         }
@@ -376,11 +387,11 @@ function AppContent() {
       (err) => {
         console.warn('Erro na sincronização de colaboradores:', err);
         if (isQuotaError(err)) {
-          setFirestoreErrorNotice('Cota do Cloud Firestore excedida. Verifique a conexão e tente reconectar.');
+          setDbErrorNotice('Cota do banco de dados excedida. Verifique a conexão e tente reconectar.');
         } else if (isPermissionError(err)) {
-          setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+          setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
         } else {
-          setFirestoreErrorNotice('Falha de conexão com o banco de dados. Tente reconectar.');
+          setDbErrorNotice('Falha de conexão com o banco de dados. Tente reconectar.');
         }
         markCollectionLoaded('colaboradores');
         setIsSyncing(false);
@@ -389,11 +400,11 @@ function AppContent() {
       false
     ));
 
-    // Subscribe to Time Records in Firestore (sempre ativo: gestão)
+    // Subscribe to Time Records in Database (sempre ativo: gestão)
     unsubs.push(dbService.subscribeTimeRecords(
       (recs) => {
         setRecords(recs);
-        setFirestoreErrorNotice(null);
+        setDbErrorNotice(null);
         if (recs.length > 0) {
           storageService.saveTimeRecords(recs);
         }
@@ -402,11 +413,11 @@ function AppContent() {
       (err) => {
         console.warn('Erro na sincronização de lançamentos:', err);
         if (isQuotaError(err)) {
-          setFirestoreErrorNotice('Cota do Cloud Firestore excedida. Verifique a conexão e tente reconectar.');
+          setDbErrorNotice('Cota do banco de dados excedida. Verifique a conexão e tente reconectar.');
         } else if (isPermissionError(err)) {
-          setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+          setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
         } else {
-          setFirestoreErrorNotice('Falha de conexão com o banco de dados. Tente reconectar.');
+          setDbErrorNotice('Falha de conexão com o banco de dados. Tente reconectar.');
         }
         markCollectionLoaded('lancamentos');
       },
@@ -415,7 +426,7 @@ function AppContent() {
       true
     ));
 
-    // Subscribe to Insalubrity Records in Firestore (sempre ativo: gestão)
+    // Subscribe to Insalubrity Records in Database (sempre ativo: gestão)
     unsubs.push(dbService.subscribeInsalubrityRecords(
       (items) => {
         setInsalubrityRecords(items);
@@ -427,7 +438,7 @@ function AppContent() {
       (err) => {
         console.warn('Erro na sincronização de insalubridade:', err);
         if (isQuotaError(err)) {
-          setFirestoreErrorNotice('Cota do Cloud Firestore excedida. Verifique a conexão e tente reconectar.');
+          setDbErrorNotice('Cota do banco de dados excedida. Verifique a conexão e tente reconectar.');
         }
         markCollectionLoaded('insalubridade');
       },
@@ -435,7 +446,7 @@ function AppContent() {
       false
     ));
 
-    // Subscribe to Paystubs (Contracheques Digitais) in Firestore (sempre ativo: gestão)
+    // Subscribe to Paystubs (Contracheques Digitais) in Database (sempre ativo: gestão)
     unsubs.push(dbService.subscribePaystubs(
       (items) => {
         setPaystubs(items);
@@ -447,7 +458,7 @@ function AppContent() {
       (err) => {
         console.warn('Erro na sincronização de contracheques:', err);
         if (isQuotaError(err)) {
-          setFirestoreErrorNotice('Cota do Cloud Firestore excedida. Verifique a conexão e tente reconectar.');
+          setDbErrorNotice('Cota do banco de dados excedida. Verifique a conexão e tente reconectar.');
         }
         markCollectionLoaded('contracheques');
       },
@@ -492,7 +503,7 @@ function AppContent() {
         (err) => {
           console.warn('Erro na sincronização de dispensas SPTF:', err);
           if (isQuotaError(err)) {
-            setFirestoreErrorNotice('Cota do Cloud Firestore excedida. Verifique a conexão e tente reconectar.');
+            setDbErrorNotice('Cota do banco de dados excedida. Verifique a conexão e tente reconectar.');
           }
           markCollectionLoaded('dispensas');
         },
@@ -545,11 +556,11 @@ function AppContent() {
   // eliminando qualquer competição entre listeners no login/logout.
   useEffect(() => {
     if (isAuthLoading || !authReady || !currentUser) return;
-    const cleanup = initFirestoreSubscriptions(!!currentUser);
+    const cleanup = initDbSubscriptions(!!currentUser);
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, [initFirestoreSubscriptions, currentUser?.email, isAuthLoading, authReady]);
+  }, [initDbSubscriptions, currentUser?.email, isAuthLoading, authReady]);
 
   // -------------------------------------------------------------
   // Rotas simplificadas: /admin (gestão administrativa)
@@ -849,7 +860,7 @@ function AppContent() {
               sede: processed.admin.sede || processed.admin.canteiroSede || 'TODAS',
               loginTime: new Date().toISOString(),
             });
-            setFirestoreErrorNotice(null);
+            setDbErrorNotice(null);
             showToast(`Bem-vindo(a), ${user.displayName || processed.admin.nome}!`, 'success');
           }
         }
@@ -929,7 +940,7 @@ function AppContent() {
       sede: processed.admin.sede || processed.admin.canteiroSede || 'TODAS',
       loginTime: new Date().toISOString(),
     });
-    setFirestoreErrorNotice(null);
+    setDbErrorNotice(null);
     showToast(`Bem-vindo(a), ${user.displayName || processed.admin.nome}!`, 'success');
     return { success: true, pending: false };
   };
@@ -1084,7 +1095,7 @@ function AppContent() {
     if (!podeGravarNoPeriodo(canteiroId, competencia, isEdit ? 'editar lançamento' : 'salvar lançamento')) return;
     try {
       await dbService.saveTimeRecord(newRecord, currentUser?.email || 'admin@rh.cloud');
-      showToast(`Lançamento de ${newRecord.horasBrutas}h gravado no Cloud Firestore com sucesso!`, 'success');
+      showToast(`Lançamento de ${newRecord.horasBrutas}h gravado no banco de dados com sucesso!`, 'success');
 
       // Audit Trail
       registrarLogAuditoria({
@@ -1106,7 +1117,7 @@ function AppContent() {
     } catch (error: any) {
       console.error('Erro ao salvar no Firestore, usando fallback local:', error);
       if (isPermissionError(error)) {
-        setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+        setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
       }
       const updatedRecords = storageService.addTimeRecord(newRecord);
       setRecords([...updatedRecords]);
@@ -1123,7 +1134,7 @@ function AppContent() {
 
     setBatchProgress({
       isOpen: true,
-      title: 'Importando Lançamentos no Cloud Firestore',
+      title: 'Importando Lançamentos no banco de dados',
       processed: 0,
       total,
       percent: 0,
@@ -1137,7 +1148,7 @@ function AppContent() {
         (progress: BatchProgressInfo) => {
           setBatchProgress({
             isOpen: true,
-            title: `Gravando no Cloud Firestore (Lote ${progress.chunkIndex}/${progress.totalChunks})...`,
+            title: `Gravando no banco de dados (Lote ${progress.chunkIndex}/${progress.totalChunks})...`,
             processed: progress.processed,
             total: progress.total,
             percent: progress.percent,
@@ -1163,13 +1174,13 @@ function AppContent() {
       if (res.errors.length > 0) {
         showToast(`${res.count} de ${total} lançamentos sincronizados com alguns alertas.`, 'info');
       } else {
-        showToast(`${res.count.toLocaleString('pt-BR')} lançamentos sincronizados no Cloud Firestore com sucesso!`, 'success');
+        showToast(`${res.count.toLocaleString('pt-BR')} lançamentos sincronizados no banco de dados com sucesso!`, 'success');
       }
     } catch (error: any) {
       console.error('Erro no batch import Firestore, salvando localmente:', error);
       setBatchProgress(null);
       if (isPermissionError(error)) {
-        setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+        setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
       }
       const updatedRecords = storageService.addTimeRecordsBatch(importedRecords);
       setRecords([...updatedRecords]);
@@ -1224,12 +1235,12 @@ function AppContent() {
       if (newEmployees.length > 0 && !selectedMatricula) {
         setSelectedMatricula(newEmployees[0].matricula);
       }
-      showToast(`Base oficial de ${res.count.toLocaleString('pt-BR')} colaboradores gravada no Cloud Firestore!`, 'success');
+      showToast(`Base oficial de ${res.count.toLocaleString('pt-BR')} colaboradores gravada no banco de dados!`, 'success');
     } catch (error: any) {
       console.error('Erro ao gravar colaboradores no Firestore, salvando localmente:', error);
       setBatchProgress(null);
       if (isPermissionError(error)) {
-        setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+        setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
       }
       storageService.saveEmployees(newEmployees);
       setEmployees([...newEmployees]);
@@ -1288,7 +1299,7 @@ function AppContent() {
     } catch (error: any) {
       console.error('Erro ao limpar Firestore:', error);
       if (isPermissionError(error)) {
-        setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+        setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
       }
       storageService.clearAllData();
       setEmployees([]);
@@ -1402,7 +1413,7 @@ function AppContent() {
       await dbService.deleteTimeRecord(id);
       storageService.deleteTimeRecord(id);
       setRecords(prev => prev.filter(r => r.id !== id));
-      showToast('Lançamento excluído com sucesso do Cloud Firestore!', 'success');
+      showToast('Lançamento excluído com sucesso do banco de dados!', 'success');
 
       // Audit Trail
       registrarLogAuditoria({
@@ -1466,7 +1477,7 @@ function AppContent() {
     } catch (error: any) {
       console.error('Erro ao emitir Dispensa de SPTF no Firestore:', error);
       if (isPermissionError(error)) {
-        setFirestoreErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
+        setDbErrorNotice('Erro de permissão no banco de dados. Verifique a autenticação.');
       }
       storageService.addDispensaSptf(dispensa);
       const updatedRecords = storageService.addTimeRecord(lancamentoRecord);
@@ -1554,7 +1565,7 @@ function AppContent() {
 
     try {
       await dbService.saveInsalubrityRecord(record);
-      showToast('Registro de insalubridade gravado com sucesso no Cloud Firestore!');
+      showToast('Registro de insalubridade gravado com sucesso no banco de dados!');
     } catch (err: any) {
       console.error('Erro ao salvar registro de insalubridade no Firestore:', err);
       showToast('Registro de insalubridade gravado localmente.', 'info');
@@ -1834,7 +1845,7 @@ function AppContent() {
       >
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
-          <span className="text-gray-400">Verificando credenciais Cloud Firestore...</span>
+          <span className="text-gray-400">Verificando credenciais banco de dados...</span>
         </div>
       </div>
     );
@@ -2049,22 +2060,26 @@ function AppContent() {
       className={`notranslate min-h-screen ${isDark ? 'bg-[#0B1426] text-[#E2E8F0]' : 'bg-[#F8FAFC] text-slate-900'} ${layoutMode === 'sidebar' ? 'flex' : 'flex flex-col'} font-sans antialiased selection:bg-[#3B82F6] selection:text-white transition-colors`}
     >
       
-      {/* Banner de Aviso de Permissão de Banco de Dados */}
-      {firestoreErrorNotice && (
-        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 text-amber-300 text-xs flex items-center justify-between z-40">
+      {/* Banner de Aviso de Permissão de Banco de Dados com Auto-Dismiss (10s) */}
+      {dbErrorNotice && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 text-amber-300 text-xs flex items-center justify-between z-40 animate-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="font-medium">{firestoreErrorNotice} Os dados podem estar indisponíveis até a reconexão.</span>
+            <span className="font-medium">{dbErrorNotice} Os dados podem estar indisponíveis até a reconexão.</span>
           </div>
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => initFirestoreSubscriptions(!!currentUser)}
+              onClick={() => initDbSubscriptions(!!currentUser)}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 rounded-lg text-[11px] font-bold text-amber-200 transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
               <span>Tentar Reconectar</span>
             </button>
-            <button onClick={() => setFirestoreErrorNotice(null)} className="text-amber-400 hover:text-amber-200 p-1">
+            <button 
+              onClick={() => setDbErrorNotice(null)} 
+              className="text-amber-400 hover:text-amber-200 p-1 transition-colors"
+              title="Fechar aviso"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -2459,7 +2474,7 @@ function AppContent() {
         <div className="max-w-[1880px] mx-auto px-2 sm:px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span className="font-mono text-[11px] sm:text-xs flex items-center gap-1.5 justify-center sm:justify-start">
             <Cloud className="w-3.5 h-3.5 text-blue-500" />
-            <span>Base Oficial Conectada ao Cloud Firestore ({employees.length.toLocaleString('pt-BR')} colaboradores • {records.length.toLocaleString('pt-BR')} lançamentos)</span>
+            <span>Base Oficial Conectada ao banco de dados ({employees.length.toLocaleString('pt-BR')} colaboradores • {records.length.toLocaleString('pt-BR')} lançamentos)</span>
           </span>
           <span className="text-[11px] sm:text-xs font-sans">
             COMARA • Sistema de Gestão de Banco de Horas SPTF & LGPD

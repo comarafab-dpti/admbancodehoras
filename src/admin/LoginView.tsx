@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { authService, DEFAULT_MASTER_ACCOUNTS } from '@/src/shared/services/authService';
+import { authService, DEFAULT_MASTER_ACCOUNTS, ProcessAuthResult } from '@/src/shared/services/authService';
 import { AuthSession } from '@/src/shared/types';
 import { ComaraLogo } from '@/src/shared/components/ComaraLogo';
 import { 
@@ -60,7 +60,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
-  const handleApplyLoginSuccess = (user: any, processed: any) => {
+  const handleApplyLoginSuccess = (user: any | null, processed: ProcessAuthResult) => {
     if (processed.status === 'inativo' || processed.status === 'bloqueado') {
       setErrorMessage('Usuário desativado. Procure o Gerente ou DA do canteiro para solicitar o desbloqueio.');
       return;

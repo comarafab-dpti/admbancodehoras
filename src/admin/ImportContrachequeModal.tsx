@@ -238,7 +238,7 @@ export const ImportContrachequeModal: React.FC<ImportContrachequeModalProps> = (
       await onImportBatch(parsedPaystubs);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Erro ao persistir registros no Cloud Firestore.');
+      setErrorMessage(err.message || 'Erro ao persistir registros no banco de dados.');
     } finally {
       setIsLoading(false);
     }
@@ -663,7 +663,7 @@ export const ImportContrachequeModal: React.FC<ImportContrachequeModalProps> = (
         }`}>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Gravação no Firestore com matrícula normalizada (ex: <code>13974_07-2026</code>)</span>
+            <span>Gravação no banco de dados com matrícula normalizada (ex: <code>13974_07-2026</code>)</span>
           </div>
 
           <div className="flex items-center gap-2.5">

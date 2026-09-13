@@ -87,7 +87,7 @@ export const BackupRestorePanel: React.FC<BackupRestorePanelProps> = ({
             <div>
               <h1 className="text-lg font-bold">Backup e Restauração da Base Central</h1>
               <p className={`text-xs mt-1 ${muted}`}>
-                Exportação completa das coleções configuradas e restauração controlada no Cloud Firestore. <InfoTooltip theme={isDark ? 'dark' : 'light'} content="Gera snapshot JSON completo dos colaboradores, canteiros, lançamentos, contracheques e insalubridade." />
+                Exportação completa das coleções configuradas e restauração controlada no banco de dados. <InfoTooltip theme={isDark ? 'dark' : 'light'} content="Gera snapshot JSON completo dos colaboradores, canteiros, lançamentos, contracheques e insalubridade." />
               </p>
             </div>
           </div>
@@ -160,7 +160,7 @@ export const BackupRestorePanel: React.FC<BackupRestorePanelProps> = ({
                     <h3 className="font-bold text-sm">Modo Treinamento (Seed Oficial)</h3>
                   </div>
                   <p className={`text-xs leading-relaxed ${muted}`}>
-                    Popula o Cloud Firestore com 5 canteiros de obras (Coari, Belém, Manaus, Iauaretê, SGC), 10 colaboradores com múltiplos status, lançamentos com adicionais de 50%/100%, insalubridade e contracheques.
+                    Popula o banco de dados com 5 canteiros de obras (Coari, Belém, Manaus, Iauaretê, SGC), 10 colaboradores com múltiplos status, lançamentos com adicionais de 50%/100%, insalubridade e contracheques.
                   </p>
                 </div>
 

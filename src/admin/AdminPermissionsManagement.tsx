@@ -146,7 +146,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
     }
   };
 
-  // Sync real-time with Firestore (once, optimized)
+  // Sync real-time with banco de dados (once, optimized)
   useEffect(() => {
     const unsub = dbService.subscribeAdmins((list) => {
       // Filtra contas fictícias legadas
@@ -536,12 +536,12 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
               isDark ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
             }`}>
               <Cloud className="w-3 h-3" />
-              <span>Cloud Firestore Sync</span>
+              <span>banco de dados Sync</span>
             </span>
           </div>
           <p className={`text-xs mt-1 ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>
             Controle de perfis de acesso, escopos por canteiro e homologação de novos gestores
-            <InfoTooltip theme={theme} content="Apenas e-mails corporativos cadastrados e ativos no Cloud Firestore têm permissão para acessar o painel de gestão." />
+            <InfoTooltip theme={theme} content="Apenas e-mails corporativos cadastrados e ativos no banco de dados têm permissão para acessar o painel de gestão." />
           </p>
         </div>
 
@@ -556,7 +556,7 @@ export const AdminPermissionsManagement: React.FC<AdminPermissionsManagementProp
                 ? 'bg-[#16243D] text-slate-300 border-[#243756] hover:text-white hover:bg-[#1E3252]' 
                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs'
             }`}
-            title="Atualizar lista de administradores e solicitações pendentes no Cloud Firestore"
+            title="Atualizar lista de administradores e solicitações pendentes no banco de dados"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
             <span>{isRefreshing ? 'Atualizando...' : 'Atualizar'}</span>

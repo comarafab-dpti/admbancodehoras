@@ -41,8 +41,9 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
    4. `supabase/migrations/006_fix_permissions_and_invoker.sql` (Correção de permissões RLS e eliminação de avisos)
    5. `supabase/migrations/008_fix_rls_recursion.sql` (Correção crítica da recursão RLS no `admin_users`, erro 54001 e eliminação do erro 42501)
    6. `supabase/migrations/009_flexible_canteiro_match.sql` (Match flexível de canteiros nas funções RLS para contracheques e documentos)
+   7. `supabase/migrations/011_restrict_read_policies.sql` (Restringir leitura de `competencias_controle`, `canteiros_obras` e `unidades_organizacionais` para admins ativos)
 
-   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql`, `006_fix_permissions_and_invoker.sql`, `008_fix_rls_recursion.sql` e `009_flexible_canteiro_match.sql`).*
+   *(Ou execute `000_bootstrap.sql`, depois `004_auth_claims_trigger.sql`, `006_fix_permissions_and_invoker.sql`, `008_fix_rls_recursion.sql`, `009_flexible_canteiro_match.sql` e `011_restrict_read_policies.sql`).*
 
    ⚠️ **CRÍTICO:** A migração `008_fix_rls_recursion.sql` **DEVE ser aplicada no SQL Editor do Supabase antes de qualquer novo teste operacional**. Sem ela, perfis não-master (especialmente `AUX_DA`) enfrentam estouro de pilha (`54001: stack depth limit exceeded`) ao consultar `admin_users`.
 
@@ -196,5 +197,73 @@ etc.) pode ser feita depois, tabela por tabela, sem quebrar o app.
   - No fluxo de autenticação do `App.tsx`, o perfil contido no JWT (`auth.jwt().app_metadata.nivel_acesso`) é comparado com o perfil do documento `admin_users`.
   - Em caso de divergência, é chamado `supabase.auth.refreshSession()`.
   - Se a discrepância persistir após o refresh, a interface exibe um toast de aviso: *"Suas permissões foram atualizadas. Faça logout e login novamente."*
+
+## Onda 2D — Restringir Read Policies Amplas (Migration 011)
+
+Algumas coleções administrativas (`competencias_controle`, `canteiros_obras`, `unidades_organizacionais`) eram acessíveis por qualquer usuário autenticado. A migration 011 restringe essas leituras para admins ativos apenas.
+
+**Motivação:** essas coleções contêm dados estratégicos da instituição. A leitura deve ser reservada para o time administrativo.
+
+**Implementação:**
+- **Migration 011** (`supabase/migrations/011_restrict_read_policies.sql`):
+  - Replace policy `SELECT` em `competencias_controle`, `canteiros_obras` e `unidades_organizacionais`.
+  - Nova regra: `USING (public.is_admin_active())` em vez de aberto para `authenticated`.
+  - Policies de escrita permanecem inalteradas (apenas `is_global_admin()`).
+  - Mudança é **idempotente** (DROP POLICY IF EXISTS).
+
+**Quando executar:**
+- Após todas as migrações anteriores (001–010).
+- Antes de qualquer novo deploy em produção.
+
+## Onda 3 — Normalização dos Dados Migrados do Firestore
+
+Após a migração inicial do Firestore para Supabase, a auditoria identificou **3 tipos de inconsistência** nos dados importados:
+
+1. **Timestamps em formato Firestore**: alguns campos possuem `{_seconds: 1700000000, _nanoseconds: 0}` em vez de ISO-8601, causando erros `Invalid Date` no frontend.
+2. **Campos de sede não padronizados**: registros com `sede`, `sedeCodigo`, `employeeSede` ou `secaoCanteiro` preenchidos de forma inconsistente ou apenas parcial.
+3. **Competência ausente ou inválida**: lançamentos e contracheques sem o campo `competencia` em formato `YYYY-MM`.
+
+### Execução
+
+1. **Pré-requisitos**:
+   - Todas as migrações anteriores (001–009) devem estar executadas no Supabase.
+   - Backup dos dados (a migração 010 é **idempotente**, mas é prudente ter backup).
+
+2. **No Supabase Dashboard > SQL Editor**:
+   - Copie o conteúdo de `supabase/migrations/010_normalize_migrated_data.sql`.
+   - Cole e execute para normalizar timestamps, sedes e competências.
+   - A migration cria automaticamente a tabela `logs_normalizacao` com registros de todas as alterações.
+
+3. **Validação**:
+   - Execute o script `supabase/scripts/diagnostico_migracao.sql` **antes e depois** da migration 010.
+   - Consulte os resultados para confirmar:
+     - Nenhum documento com timestamp Firestore ainda não convertido.
+     - Nenhum lançamento ou contracheque orfão.
+     - Nenhuma duplicata de matrícula.
+     - Competências em formato válido `YYYY-MM`.
+   - A tabela `logs_normalizacao` contém um registro para cada alteração realizada.
+
+4. **Idempotência**:
+   - A migration pode ser executada múltiplas vezes sem gerar duplicatas em `logs_normalizacao`.
+   - Se um valor já foi normalizado, a cláusula `ON CONFLICT DO NOTHING` impede reinscrição duplicada no log.
+   - UPDATEs verificam condições antes de alterar, evitando gravações desnecessárias.
+
+### Campos Normalizados
+
+| Tabela | Campos de Timestamp | Campos de Sede | Campos de Competência |
+|--------|---------------------|----------------|-----------------------|
+| `lancamentos` | `criadoEm`, `atualizadoEm`, `dataRegistro` | `sedeCodigo` | `competencia` (derivada de `dataRegistro`) |
+| `dispensas_sptf` | `emitidoEm`, `data` | `sedeCodigo`, `employeeSede` | — |
+| `contracheques` | `importadoEm` | `sedeCodigo` | `competencia` (convertida de `mesAno`) |
+| `insalubridade_records` | `criadoEm`, `dataEvento` | `sedeCodigo` | — |
+| `competencias_controle` | `fechadoEm` | — | — |
+| `admin_users` | `criadoEm`, `atualizadoEm` | — | — |
+| `logs_auditoria` | `criadoEm` | — | — |
+| `colaboradores` | — | `sedeCodigo` | — |
+
+### Próximas Ondas
+
+- **Onda 4** (planejada): **Paginação Completa e TanStack Query** — migrar todas as telas CRUD para `getCollectionPage`, `useQuery` e `useMutation`, eliminando dependência de arrays globais.
+- **Onda 5** (planejada): **Normalização Relacional Incremental** — extrair colunas de tabelas documentais para estrutura relacional sem quebrar compatibilidade do app.
 
 

@@ -126,7 +126,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     try {
       const { sedes: _legacySedes, ...institutionSettings } = formData;
       await updateSettings(institutionSettings);
-      setSaveSuccessNotice('Configurações institucionais gravadas com sucesso no Cloud Firestore!');
+      setSaveSuccessNotice('Configurações institucionais gravadas com sucesso no banco de dados!');
       if (onShowToast) onShowToast('Configurações institucionais atualizadas com sucesso!', 'success');
     } catch (err: any) {
       console.error('[SettingsPage] Erro ao salvar configurações:', err);
@@ -237,7 +237,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             {isUpdating ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Gravando no Firestore...</span>
+                <span>Gravando no banco de dados...</span>
               </>
             ) : (
               <>

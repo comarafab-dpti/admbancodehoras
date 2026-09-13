@@ -1924,7 +1924,7 @@ export const LookerDashboard = React.memo<LookerDashboardProps>(
             </span>
           </div>
           <span className={`text-[10px] font-mono ${isDark ? 'text-[#64748B]' : 'text-gray-400'}`}>
-            Base sincronizada Cloud Firestore
+            Base sincronizada banco de dados
           </span>
         </div>
       </div>
