@@ -236,7 +236,9 @@ export const dbService = {
       return;
     }
 
-    console.warn('[Firestore] Escrita realizada sem sessão autenticada ativa.');
+    if (import.meta.env.DEV) {
+      console.warn('[Firestore] Escrita realizada sem sessão autenticada ativa.');
+    }
   },
 
   // -------------------------------------------------------------

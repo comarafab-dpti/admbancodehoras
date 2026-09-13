@@ -79,7 +79,7 @@ export const InstitutionProvider: React.FC<InstitutionProviderProps> = ({
     return role === 'SUPER_ADMIN';
   }, [activeUser]);
 
-  // Inicia a assinatura em tempo real via onSnapshot do Firestore
+  // Inicia a assinatura em tempo real via onSnapshot do banco de dados
   useEffect(() => {
     setIsLoading(true);
     setError(null);
@@ -92,7 +92,7 @@ export const InstitutionProvider: React.FC<InstitutionProviderProps> = ({
         setError(null);
       },
       (err) => {
-        console.warn('[InstitutionContext] Erro ao sincronizar com Firestore:', err);
+        console.warn('[InstitutionContext] Erro ao sincronizar com banco de dados:', err);
         setError('Não foi possível sincronizar as configurações institucionais com a nuvem. Usando valores locais.');
         setIsLoading(false);
       }

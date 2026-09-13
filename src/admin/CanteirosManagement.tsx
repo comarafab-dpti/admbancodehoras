@@ -255,7 +255,7 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
     setIsModalOpen(true);
   };
 
-  // Salvar canteiro no Firestore e invalidar cache
+  // Salvar canteiro no banco de dados e invalidar cache
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
@@ -382,7 +382,7 @@ export const CanteirosManagement: React.FC<CanteirosManagementProps> = ({
     }
   };
 
-  // Excluir canteiro do Firestore com verificação de dependências de colaboradores
+  // Excluir canteiro do banco de dados com verificação de dependências de colaboradores
   const handleDelete = async (site: ConstructionSite) => {
     const siteName = site.nome || site.name || site.codigo || 'Canteiro';
     const dep = canteiroService.verificarDependenciasCanteiro(site, employees);

@@ -57,7 +57,7 @@ export const ComaraLogoModal: React.FC<ComaraLogoModalProps> = ({
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
       setLogoUrl(dataUrl);
-      setFeedback({ type: 'success', text: 'Imagem carregada localmente. Clique em Salvar para sincronizar no Cloud Firestore.' });
+      setFeedback({ type: 'success', text: 'Imagem carregada localmente. Clique em Salvar para sincronizar no banco de dados.' });
     };
     reader.readAsDataURL(file);
   };
