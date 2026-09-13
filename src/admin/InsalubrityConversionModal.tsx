@@ -707,7 +707,7 @@ export const InsalubrityConversionModal: React.FC<InsalubrityConversionModalProp
                 {isProcessing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Processando e Gravando no Cloud Firestore...</span>
+                    <span>Processando e Gravando no banco de dados...</span>
                   </>
                 ) : (
                   <>

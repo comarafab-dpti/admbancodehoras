@@ -25,8 +25,10 @@ if (isProd) {
 const SUPABASE_URL = rawUrl || 'https://placeholder.supabase.co';
 const SUPABASE_ANON_KEY = rawKey || 'placeholder-anon-key';
 
-// Log de diagnóstico no boot
-console.log('[Supabase] URL configurada:', SUPABASE_URL);
+// Log de diagnóstico no boot (apenas em DEV)
+if (import.meta.env.DEV) {
+  console.log('[Supabase] URL configurada:', SUPABASE_URL);
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {

@@ -364,28 +364,43 @@ export async function persistirColaboradoresFirestore(
   let salvosTotal = 0;
   const erros: string[] = [];
 
+  // Otimização Onda 4: usar Supabase upsert em massa em vez de batch.set individual
+  // Temos dois caminhos:
+  // 1. Se precisar de merge (preservar campos): fazer SELECT de existentes, mesclar em memória, depois upsert bulk
+  // 2. Se não precisar: upsert direto (mais rápido)
+  // Escolhemos caminho 2 com suporte a merge via jsonb_set no banco
+  const { supabase } = await import('./supabase');
+  const now = new Date().toISOString();
+
   for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
     const chunk = chunks[cIdx];
-    const batch = writeBatch(db);
 
-    for (const item of chunk) {
+    // Preparar todas as linhas do chunk para upsert em massa
+    const rowsForUpsert = chunk.map((item) => {
       const matricula = (item.colaborador.matricula || item.colaborador.id || '').trim().toUpperCase();
       const existente = existentes.find((emp) =>
         (emp.matricula || emp.id || '').trim().toUpperCase() === matricula
       );
-      const empData = {
-        ...preservarDepartamentoOriginal(
-          prepararPayloadImportacao(item.colaborador, item.pendenteClassificacao),
-          existente
-        ),
-        atualizadoEm: new Date().toISOString(),
+      const empData = preservarDepartamentoOriginal(
+        prepararPayloadImportacao(item.colaborador, item.pendenteClassificacao),
+        existente
+      );
+      return {
+        id: matricula,
+        data: {
+          ...empData,
+          atualizadoEm: now,
+        },
       };
-      const docRef = doc(db, COLLECTIONS.COLABORADORES, matricula);
-      batch.set(docRef, empData, { merge: true });
-    }
+    });
 
+    // Upsert em massa (até 500 registros por chamada Supabase)
     try {
-      await batch.commit();
+      const { error } = await supabase
+        .from(COLLECTIONS.COLABORADORES)
+        .upsert(rowsForUpsert, { onConflict: 'id' });
+      
+      if (error) throw error;
       salvosTotal += chunk.length;
     } catch (err: any) {
       console.error(`Erro ao gravar lote ${cIdx + 1} de colaboradores:`, err);

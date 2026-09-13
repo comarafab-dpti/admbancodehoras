@@ -219,7 +219,7 @@ export const DatabaseSafetyActionModal: React.FC<DatabaseSafetyActionModalProps>
               <p className={`text-xs ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>
                 {actionType === 'CLEAR_DATABASE' 
                   ? 'Exclusão de coleções operacionais preservando administradores e configurações' 
-                  : 'Povoamento oficial no Firestore com colaboradores, canteiros, lançamentos e insalubridade'}
+                  : 'Povoamento oficial no banco de dados com colaboradores, canteiros, lançamentos e insalubridade'}
               </p>
             </div>
           </div>
@@ -248,7 +248,7 @@ export const DatabaseSafetyActionModal: React.FC<DatabaseSafetyActionModalProps>
               </h4>
               {actionType === 'CLEAR_DATABASE' ? (
                 <p className="leading-relaxed">
-                  Esta ação removerá <strong>permanentemente</strong> todos os colaboradores, lançamentos de horas diárias, apontamentos de insalubridade e registros associados do <strong>Cloud Firestore</strong> e do cache local para que você possa importar sua base oficial limpa.
+                  Esta ação removerá <strong>permanentemente</strong> todos os colaboradores, lançamentos de horas diárias, apontamentos de insalubridade e registros associados do <strong>banco de dados</strong> e do cache local para que você possa importar sua base oficial limpa.
                 </p>
               ) : (
                 <p className="leading-relaxed">

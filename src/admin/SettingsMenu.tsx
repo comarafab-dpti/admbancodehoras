@@ -531,7 +531,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
                           <span>Backup e Restauração</span>
                           <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-cyan-500/20 text-cyan-300">SUPER ADMIN</span>
                         </div>
-                        <span className={`text-[10px] block ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>Exportar e restaurar a base Firestore</span>
+                        <span className={`text-[10px] block ${isDark ? 'text-[#94A3B8]' : 'text-slate-500'}`}>Exportar e restaurar a base banco de dados</span>
                       </div>
                     </button>
                   )}

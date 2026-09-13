@@ -29,7 +29,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ theme = 'dar
       </span>
       <div className="flex items-center gap-1.5">
         <WifiOff className="w-3.5 h-3.5" />
-        <span>Sem conexão com o Firestore • dados locais podem estar desatualizados</span>
+        <span>Sem conexão com o banco de dados • dados locais podem estar desatualizados</span>
       </div>
     </div>
   );

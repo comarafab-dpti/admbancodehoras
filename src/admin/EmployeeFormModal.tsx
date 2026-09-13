@@ -317,7 +317,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Erro ao salvar colaborador:', err);
-      setFormError(err?.message || 'Erro ao gravar informações no Cloud Firestore.');
+      setFormError(err?.message || 'Erro ao gravar informações no banco de dados.');
     } finally {
       setIsSaving(false);
     }

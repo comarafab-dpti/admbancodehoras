@@ -262,7 +262,7 @@ export const QuickBatchEntryModal: React.FC<QuickBatchEntryModalProps> = ({
       if (typeof onSaveBatch === 'function') {
         await onSaveBatch(recordsToSave);
       } else {
-        // Fallback direto com Firestore e Storage
+        // Fallback direto com banco de dados e Storage
         await dbService.importTimeRecordsBatch(recordsToSave);
         storageService.addTimeRecordsBatch(recordsToSave);
       }
@@ -277,7 +277,7 @@ export const QuickBatchEntryModal: React.FC<QuickBatchEntryModalProps> = ({
       console.error('Erro ao gravar lote de lançamentos:', err);
       setFeedback({
         type: 'error',
-        text: `Lote não gravado no Cloud Firestore: ${err?.message || 'Falha na comunicação com o banco'}.`,
+        text: `Lote não gravado no banco de dados: ${err?.message || 'Falha na comunicação com o banco'}.`,
       });
       return false;
     } finally {
