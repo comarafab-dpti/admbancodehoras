@@ -1,4 +1,4 @@
-# 🏗️ Arquitetura da Refatoração - Diagrama Visual
+# 🏗️ Arquitetura da Refatoração - Diagrama Visual.
 
 ## Fluxo Completo de Importação
 
