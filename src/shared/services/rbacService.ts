@@ -1,4 +1,5 @@
 import { AdminRole, Employee, TimeRecord, InsalubrityRecord, DispensaSptfRecord, PaystubRecord, Branch } from '../types';
+import { extractCanteiro, matchesTenancy, logTenancy } from '../utils/tenancy';
 
 export interface RBACUser {
   email: string;
@@ -9,6 +10,7 @@ export interface RBACUser {
   sede?: string;
   canteiroCodigo?: string;
   canteiroId?: string;
+  canteiroSede?: string;
   uoGestao?: string;
 }
 
@@ -387,11 +389,14 @@ export const rbacService = {
   },
 
   /**
-   * Obtém a sede/canteiro do usuário (ex: 'KO', 'BE', 'MN')
+   * Obtém a sede/canteiro do usuário (ex: 'KO', 'BE', 'MN').
+   * Retorna string vazia quando o usuário não tem canteiro definido
+   * (significa escopo global para matchesTenancy).
    */
   getUserCanteiroId(user?: RBACUser | null): string {
-    if (!user) return 'KO';
-    return (user.canteiroId || user.canteiroCodigo || user.sede || 'KO').toUpperCase();
+    if (!user) return '';
+    const raw = user.canteiroId || user.canteiroCodigo || user.canteiroSede || user.sede || '';
+    return raw ? raw.toUpperCase() : '';
   },
 
   getUserUo(user?: RBACUser | null): string {
@@ -400,15 +405,12 @@ export const rbacService = {
 
   canAccessEmployeeInScope(user: RBACUser | null, employee: Employee): boolean {
     if (!user) return false;
-    if (this.hasGlobalAccess(user.role)) return true;
+    const normalizedRole = this.normalizeRole(user.role);
+    if (this.hasGlobalAccess(normalizedRole)) return true;
 
-    const userUo = this.getUserUo(user);
-    if (this.normalizeRole(user.role) === 'AUX_DA' && userUo) {
-      const employeeUo = (employee.lotacaoUoCodigo || employee.lotacao || '').trim().toUpperCase();
-      return employeeUo === userUo;
-    }
-
-    return (employee.sedeCodigo || '').toUpperCase() === this.getUserCanteiroId(user);
+    const userCanteiro = this.getUserCanteiroId(user);
+    const docCanteiro = extractCanteiro(employee);
+    return matchesTenancy(userCanteiro, normalizedRole, docCanteiro);
   },
 
   /**
@@ -423,9 +425,16 @@ export const rbacService = {
    */
   filterEmployeesByTenancy(employees: Employee[], user: RBACUser | null): Employee[] {
     if (!user) return [];
-    if (this.hasGlobalAccess(user.role)) return employees;
+    const normalizedRole = this.normalizeRole(user.role);
+    if (this.hasGlobalAccess(normalizedRole)) return employees;
 
-    return employees.filter((emp) => this.canAccessEmployeeInScope(user, emp));
+    const userCanteiro = this.getUserCanteiroId(user);
+    const result = employees.filter((emp) => {
+      const docCanteiro = extractCanteiro(emp);
+      return matchesTenancy(userCanteiro, normalizedRole, docCanteiro);
+    });
+    logTenancy('colaboradores', userCanteiro, normalizedRole, employees.length, result.length);
+    return result;
   },
 
   /**
@@ -433,26 +442,26 @@ export const rbacService = {
    */
   filterRecordsByTenancy(records: TimeRecord[], employees: Employee[], user: RBACUser | null): TimeRecord[] {
     if (!user) return [];
-    if (this.hasGlobalAccess(user.role)) return records;
+    const normalizedRole = this.normalizeRole(user.role);
+    if (this.hasGlobalAccess(normalizedRole)) return records;
 
     const userCanteiro = this.getUserCanteiroId(user);
-    
-    // Mapeia matrículas que pertencem ao canteiro do usuário
+
     const allowedMatriculas = new Set<string>();
     employees.forEach((emp) => {
-      const empSede = (emp.sedeCodigo || '').toUpperCase();
-      if (this.canAccessEmployeeInScope(user, emp)) {
+      if (matchesTenancy(userCanteiro, normalizedRole, extractCanteiro(emp))) {
         allowedMatriculas.add(emp.matricula.trim().toUpperCase());
       }
     });
 
-    return records.filter((rec) => {
+    const result = records.filter((rec) => {
       const mat = (rec.matricula || '').trim().toUpperCase();
       if (allowedMatriculas.has(mat)) return true;
-      if (this.getUserUo(user) && this.normalizeRole(user.role) === 'AUX_DA') return false;
-      if (rec.employeeSede && rec.employeeSede.toUpperCase() === userCanteiro) return true;
-      return false;
+      const docCanteiro = extractCanteiro(rec);
+      return matchesTenancy(userCanteiro, normalizedRole, docCanteiro);
     });
+    logTenancy('lancamentos', userCanteiro, normalizedRole, records.length, result.length);
+    return result;
   },
 
   /**
@@ -460,19 +469,22 @@ export const rbacService = {
    */
   filterInsalubrityByTenancy(records: InsalubrityRecord[], employees: Employee[], user: RBACUser | null): InsalubrityRecord[] {
     if (!user) return [];
-    if (this.hasGlobalAccess(user.role)) return records;
+    const normalizedRole = this.normalizeRole(user.role);
+    if (this.hasGlobalAccess(normalizedRole)) return records;
 
     const userCanteiro = this.getUserCanteiroId(user);
     const allowedMatriculas = new Set(
       employees
-        .filter((employee) => this.canAccessEmployeeInScope(user, employee))
-        .map((employee) => employee.matricula.trim().toUpperCase()),
+        .filter((emp) => matchesTenancy(userCanteiro, normalizedRole, extractCanteiro(emp)))
+        .map((emp) => emp.matricula.trim().toUpperCase()),
     );
-    return records.filter((rec) => {
+    const result = records.filter((rec) => {
       if (allowedMatriculas.has(rec.matricula.trim().toUpperCase())) return true;
-      if (this.getUserUo(user) && this.normalizeRole(user.role) === 'AUX_DA') return false;
-      return (rec.sede || 'KO').toUpperCase() === userCanteiro;
+      const docCanteiro = extractCanteiro(rec);
+      return matchesTenancy(userCanteiro, normalizedRole, docCanteiro);
     });
+    logTenancy('insalubridade', userCanteiro, normalizedRole, records.length, result.length);
+    return result;
   },
 
   /**
@@ -480,25 +492,25 @@ export const rbacService = {
    */
   filterDispensasByTenancy(dispensas: DispensaSptfRecord[], employees: Employee[], user: RBACUser | null): DispensaSptfRecord[] {
     if (!user) return [];
-    if (this.hasGlobalAccess(user.role)) return dispensas;
+    const normalizedRole = this.normalizeRole(user.role);
+    if (this.hasGlobalAccess(normalizedRole)) return dispensas;
 
     const userCanteiro = this.getUserCanteiroId(user);
-    
     const allowedMatriculas = new Set<string>();
     employees.forEach((emp) => {
-      const empSede = (emp.sedeCodigo || '').toUpperCase();
-      if (this.canAccessEmployeeInScope(user, emp)) {
+      if (matchesTenancy(userCanteiro, normalizedRole, extractCanteiro(emp))) {
         allowedMatriculas.add(emp.matricula.trim().toUpperCase());
       }
     });
 
-    return dispensas.filter((d) => {
+    const result = dispensas.filter((d) => {
       const mat = (d.matricula || '').trim().toUpperCase();
       if (allowedMatriculas.has(mat)) return true;
-      if (this.getUserUo(user) && this.normalizeRole(user.role) === 'AUX_DA') return false;
-      const secao = (d.secaoCanteiro || '').toUpperCase();
-      return secao.includes(userCanteiro);
+      const docCanteiro = extractCanteiro(d);
+      return matchesTenancy(userCanteiro, normalizedRole, docCanteiro);
     });
+    logTenancy('dispensas', userCanteiro, normalizedRole, dispensas.length, result.length);
+    return result;
   },
 
   /**
@@ -506,22 +518,24 @@ export const rbacService = {
    */
   filterPaystubsByTenancy(paystubs: PaystubRecord[], employees: Employee[], user: RBACUser | null): PaystubRecord[] {
     if (!user) return [];
-    if (this.hasGlobalAccess(user.role)) return paystubs;
+    const normalizedRole = this.normalizeRole(user.role);
+    if (this.hasGlobalAccess(normalizedRole)) return paystubs;
 
     const userCanteiro = this.getUserCanteiroId(user);
     const allowedMatriculas = new Set<string>();
     employees.forEach((emp) => {
-      if (this.canAccessEmployeeInScope(user, emp)) {
+      if (matchesTenancy(userCanteiro, normalizedRole, extractCanteiro(emp))) {
         allowedMatriculas.add(emp.matricula.trim().toUpperCase());
       }
     });
 
-    return paystubs.filter((p) => {
+    const result = paystubs.filter((p) => {
       const mat = (p.matricula || '').trim().toUpperCase();
       if (allowedMatriculas.has(mat)) return true;
-      if (this.getUserUo(user) && this.normalizeRole(user.role) === 'AUX_DA') return false;
-      const sede = (p.sede || '').toUpperCase();
-      return sede === userCanteiro || (userCanteiro === 'KO' && sede.startsWith('KO'));
+      const docCanteiro = extractCanteiro(p);
+      return matchesTenancy(userCanteiro, normalizedRole, docCanteiro);
     });
+    logTenancy('contracheques', userCanteiro, normalizedRole, paystubs.length, result.length);
+    return result;
   },
 };

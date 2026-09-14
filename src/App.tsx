@@ -2387,6 +2387,7 @@ function AppContent() {
                 onDeletePaystub={handleDeletePaystub}
                 currentUserEmail={currentUserEmail}
                 userRole={userRole}
+                currentUser={currentUser}
                 theme={theme}
               />
             </ProtectedRoute>

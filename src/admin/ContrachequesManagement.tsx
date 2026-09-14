@@ -8,6 +8,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useDebouncedValue } from '@/src/shared/hooks/useDebouncedValue';
 import { InfoTooltip } from '@/src/shared/components/InfoTooltip';
 import { rbacService } from '@/src/shared/services/rbacService';
+import { extractCanteiro, matchesTenancy } from '@/src/shared/utils/tenancy';
 
 const ContrachequeMirrorView = lazy(() => import('./ContrachequeMirrorView').then((module) => ({ default: module.ContrachequeMirrorView })));
 const ImportContrachequeModal = lazy(() => import('./ImportContrachequeModal').then((module) => ({ default: module.ImportContrachequeModal })));
@@ -41,6 +42,7 @@ interface ContrachequesManagementProps {
   theme?: 'dark' | 'light';
   currentUserEmail?: string;
   userRole?: AdminRole | string;
+  currentUser?: { canteiroId?: string; canteiroCodigo?: string; sede?: string; canteiroSede?: string } | null;
 }
 
 export const ContrachequesManagement = React.memo<ContrachequesManagementProps>(
@@ -54,8 +56,12 @@ export const ContrachequesManagement = React.memo<ContrachequesManagementProps>(
   theme = 'dark',
   currentUserEmail = 'coari.comara@gmail.com',
   userRole = 'SUPER_ADMIN',
+  currentUser = null,
 }) => {
   const isDark = theme === 'dark';
+  const normalizedRole = rbacService.normalizeRole(userRole);
+  const userCanteiro = rbacService.getUserCanteiroId(currentUser as any);
+  const isGlobalUser = rbacService.hasGlobalAccess(normalizedRole);
 
   // Regra de negócio: importação, edição e exclusão restritas a RH_ADMIN e SUPER_ADMIN.
   // AUX_DA e CHEFE_DA têm permissão apenas para leitura e impressão dos contracheques do seu canteiro.
@@ -83,7 +89,11 @@ export const ContrachequesManagement = React.memo<ContrachequesManagementProps>(
         const [mes, ano] = selectedMesAno.split('-');
         if (mes && ano) constraints.push(where('competencia', '==', `${ano}-${mes.padStart(2, '0')}`));
       }
-      if (selectedSede !== 'TODAS') constraints.push(where('sede', '==', selectedSede));
+      if (!isGlobalUser && userCanteiro && userCanteiro !== 'TODAS' && userCanteiro !== '') {
+        constraints.push(where('sede', '==', userCanteiro));
+      } else if (selectedSede !== 'TODAS') {
+        constraints.push(where('sede', '==', selectedSede));
+      }
 
       const result = await dbService.getCollectionPage('contracheques', currentPage, 20, constraints);
       const items = result.snapshot.docs.map((docSnap) => {
@@ -135,7 +145,9 @@ export const ContrachequesManagement = React.memo<ContrachequesManagementProps>(
         p.cargo.toLowerCase().includes(term);
 
       const matchMes = selectedMesAno === 'TODOS' || p.mesAno === selectedMesAno;
-      const matchSede = selectedSede === 'TODAS' || p.sede === selectedSede || (selectedSede === 'KO' && p.sede.startsWith('KO'));
+      const matchSede = isGlobalUser
+        ? selectedSede === 'TODAS' || matchesTenancy(selectedSede, normalizedRole, extractCanteiro(p))
+        : matchesTenancy(userCanteiro, normalizedRole, extractCanteiro(p));
 
       return matchSearch && matchMes && matchSede;
     });
