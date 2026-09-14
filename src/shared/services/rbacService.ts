@@ -395,8 +395,22 @@ export const rbacService = {
    */
   getUserCanteiroId(user?: RBACUser | null): string {
     if (!user) return '';
-    const raw = user.canteiroId || user.canteiroCodigo || user.canteiroSede || user.sede || '';
-    return raw ? raw.toUpperCase() : '';
+    const raw = (
+      (user as any).canteiroSede || ''
+    ).trim() || (
+      (user as any).canteiroCodigo || ''
+    ).trim() || (
+      (user as any).canteiroId || ''
+    ).trim() || (
+      (user as any).sede || ''
+    ).trim() || (
+      (user as any).sedeAtual || ''
+    ).trim() || '';
+    const result = raw ? raw.toUpperCase() : '';
+    if (import.meta.env.DEV) {
+      console.log('[Tenancy] getUserCanteiroId:', { email: user.email, raw, result });
+    }
+    return result;
   },
 
   getUserUo(user?: RBACUser | null): string {

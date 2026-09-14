@@ -6,18 +6,20 @@
 
 /**
  * Extrai o canteiro/sede de um documento, percorrendo os campos possíveis
- * em ordem de prioridade. Retorna o primeiro valor truthy encontrado.
+ * em ordem de prioridade. Retorna o primeiro valor não-vazio encontrado.
  */
 export function extractCanteiro(doc: any): string | null {
   if (!doc) return null;
-  return (
-    doc.sedeCodigo ||
-    doc.employeeSede ||
-    doc.sede ||
-    doc.sede_atual ||
-    doc.secaoCanteiro ||
-    null
-  );
+  const raw =
+    (doc.sedeCodigo || '').trim() ||
+    (doc.employeeSede || '').trim() ||
+    (doc.sede || '').trim() ||
+    (doc.sede_atual || '').trim() ||
+    (doc.sedeAtual || '').trim() ||
+    (doc.secaoCanteiro || '').trim() ||
+    (doc.uoExecucaoCodigo || '').trim() ||
+    '';
+  return raw || null;
 }
 
 /**
@@ -34,19 +36,35 @@ export function matchesTenancy(
   docCanteiro: string | null | undefined
 ): boolean {
   if (['SUPER_ADMIN', 'RH_ADMIN'].includes(userRole)) return true;
-  if (!userCanteiro || userCanteiro === 'TODAS' || userCanteiro === '') return true;
-  if (!docCanteiro) return false;
 
-  const uc = userCanteiro.toUpperCase();
-  const dc = docCanteiro.toUpperCase();
+  const uc = (userCanteiro || '').trim().toUpperCase();
+  if (uc === '' || uc === 'TODAS') return true;
 
-  return (
+  const dc = (docCanteiro || '').trim().toUpperCase();
+  if (dc === '') {
+    if (import.meta.env.DEV) {
+      console.warn('[Tenancy] Doc sem canteiro bloqueado:', docCanteiro);
+    }
+    return false;
+  }
+
+  const result =
     uc === dc ||
     dc.startsWith(uc + '-') ||
     uc.startsWith(dc + '-') ||
     dc.includes(uc) ||
-    uc.includes(dc)
-  );
+    uc.includes(dc);
+
+  if (import.meta.env.DEV) {
+    console.group('[Tenancy][DEBUG]');
+    console.log('userCanteiro:', uc);
+    console.log('userRole:', userRole);
+    console.log('docCanteiro:', dc);
+    console.log('resultado:', result);
+    console.groupEnd();
+  }
+
+  return result;
 }
 
 /**
